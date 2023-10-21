@@ -86,31 +86,27 @@ def plot_one_box(x, im, color=None, label=None, line_thickness=3, kpt_label=Fals
 
 def plot_skeleton_kpts(im, kpts, steps, orig_shape=None):
     #Plot the skeleton and keypointsfor coco datatset
-    palette = np.array([[255, 128, 0], [255, 153, 51], [255, 178, 102],
-                        [230, 230, 0], [255, 153, 255], [153, 204, 255],
-                        [255, 102, 255], [255, 51, 255], [102, 178, 255],
-                        [51, 153, 255], [255, 153, 153], [255, 102, 102],
-                        [255, 51, 51], [153, 255, 153], [102, 255, 102],
-                        [51, 255, 51], [0, 255, 0], [0, 0, 255], [255, 0, 0],
-                        [255, 255, 255], [255, 128, 0], [255, 153, 51], [255, 178, 102],
-                        [230, 230, 0], [255, 153, 255], [153, 204, 255],
-                        [255, 102, 255], [255, 51, 255], [102, 178, 255],
-                        [51, 153, 255], [255, 153, 153], [255, 102, 102],
-                        [255, 51, 51], [153, 255, 153], [102, 255, 102],
-                        [51, 255, 51], [0, 255, 0], [0, 0, 255], [255, 0, 0],
-                        [255, 255, 255]])
-
     radius = 2
     num_kpts = len(kpts) // steps
     for kid in range(num_kpts):
-        r, g, b = palette[kid]
         x_coord, y_coord = kpts[steps * kid], kpts[steps * kid + 1]
         if not (x_coord % 640 == 0 or y_coord % 640 == 0):
             if steps == 3:
                 conf = kpts[steps * kid + 2]
                 if conf < 0.5:
                     continue
-            cv2.circle(im, (int(x_coord), int(y_coord)), radius, (int(r), int(g), int(b)), -1)
+            if kid < 14:
+                cv2.circle(im, (int(x_coord), int(y_coord)), radius, (0,255,0), -1)
+            elif kid == 14:
+                cv2.circle(im, (int(x_coord), int(y_coord)), radius, (255,128,0), -1)
+            elif kid < 27:
+                cv2.circle(im, (int(x_coord), int(y_coord)), radius, (0,0,255), -1)
+            elif kid < 35:
+                cv2.circle(im, (int(x_coord), int(y_coord)), radius, (255,0,0), -1)
+            else:
+                cv2.circle(im, (int(x_coord), int(y_coord)), radius, (255,153,51), -1)
+
+
 
 def plot_one_box_PIL(box, im, color=None, label=None, line_thickness=None):
     # Plots one bounding box on image 'im' using PIL

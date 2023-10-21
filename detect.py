@@ -142,11 +142,20 @@ def detect(opt):
 
             # Stream results
             if view_img:
-                if coordinates != []:
-                    for cor in coordinates:
-                        cv2.circle(im0,cor,100,(255,0,0),-1)
+                # if coordinates != []:
+                #     for cor in coordinates:
+                #         cv2.circle(im0,cor,100,(255,0,0),-1)
                 cv2.imshow(window_name, im0)
-                cv2.waitKey(1)  # 1 millisecond
+                key = cv2.waitKey(1)
+                # cv2.imshow(str(p), im0)
+                if key == 27:  # ESC key: quit program
+                    print("")
+                    print("-------------------------------")
+                    print("------ See You Next Time ------")
+                    print("-------------------------------")
+                    print("")
+                    cv2.destroyAllWindows()
+                    return 0
 
             # Save results (image with detections)
             if save_img:

@@ -46,6 +46,8 @@ echo [3]: yolov7-light-t-80epoch-20231019.pt
 echo ----------------
 echo [4]: yolov7-lite-t-36lmk-80epochs-20231019.pt
 echo ----------------
+echo [5]: yolov7-lite-t-wilderface-36lmk-80epochs.pt
+echo ----------------
 echo [n]: None
 echo -n "Press enter to start it:"
 
@@ -66,8 +68,10 @@ fi
 if [ $MY_Weights -eq 4 ] ; then
     Weights='yolov7-lite-t-36lmk-80epochs-20231019/yolov7-lite-t-36lmk-80epochs-20231019.pt'
 fi 
+if [ $MY_Weights -eq 5 ] ; then
+    Weights='yolov7-lite-t-wilderface-36lmk-80epochs/yolov7-lite-t-wilderface-36lmk-80epochs.pt'
+fi 
 echo $Weights
-
 
 #============================================================================ 
 
@@ -84,6 +88,8 @@ echo [3]: otocam detect mesh
 echo ----------------
 echo [4]: detect mesh_multi + save-txt
 echo ----------------
+echo [5]: otocam mesh_multi 
+echo ----------------
 echo -n "Press enter to start it:"
 
 read MY_mode
@@ -99,7 +105,8 @@ if [ $MY_mode -eq 0 ] ; then
     --weight ../../weights/yolov7-face/$Weights \
     --conf-thres 0.2 \
     --iou-thres 0.5 \
-    --source cam.txt 
+    --source cam.txt \
+    --kpt-label 36
     # --weight ./torch_yolov7_weight/yolov7-custom_v3/best.pt \
     
 fi
@@ -114,7 +121,9 @@ if [ $MY_mode -eq 1 ] ; then
     --weights ../../weights/yolov7-face/$Weights \
     --source /home/joe/Desktop/Camera_oToCAM250/2023_0816_otocam_datavideo/output29.avi \
     --conf-thres 0.2 \
-    --iou-thres 0.5 
+    --iou-thres 0.5 \
+    --kpt-label 36
+
 
 fi
 
@@ -122,7 +131,7 @@ fi
 
 if [ $MY_mode -eq 2 ] ; then
     echo ============
-    echo 「otocam  detect save-txt」
+    echo 「otocam  detect_mesh save-txt」
     echo ============
 
     python detect_mesh.py \
@@ -155,7 +164,7 @@ fi
 
 if [ $MY_mode -eq 4 ] ; then
     echo ============
-    echo 「otocam  detect_mesh_multi 」
+    echo 「detect_mesh_multi + save-txt」
     echo ============
 
     python detect_mesh_multi.py \
@@ -164,6 +173,22 @@ if [ $MY_mode -eq 4 ] ; then
     --iou-thres 0.5 \
     --source /media/joe/Xavierssd/widerface/WIDER_train/images/\
     --save-txt
+
+fi
+
+#============================================================================ 
+
+
+if [ $MY_mode -eq 5 ] ; then
+    echo ============
+    echo 「otocam  detect_mesh_multi 」
+    echo ============
+
+    python detect_mesh_multi.py \
+    --weight ../../weights/yolov7-face/$Weights \
+    --conf-thres 0.2 \
+    --iou-thres 0.5 \
+    --source cam.txt 
 
 fi
 

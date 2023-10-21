@@ -173,30 +173,33 @@ def detect(opt):
 
 
                     # -------- Test code ---------
+                    xywh = (xyxy2xywh(torch.tensor(xyxy).view(1, 4)) / gn).view(-1).tolist()  # normalized xywh
 
-                    # index_list = [33,159,158,133,153,145,468,362,385,386,263,374,380,473,4,0,37,40,61,91,84,17,314,321,291,270,267,
-                    #                 13,81,78,88,14,402,308,311,152]
+
+                    index_list = [33,159,158,133,153,145,468,362,385,386,263,374,380,473,4,0,37,40,61,91,84,17,314,321,291,270,267,
+                                    13,81,78,88,14,402,308,311,152]
                         
 
-                    # with mp_face_mesh.FaceMesh(
-                    #     max_num_faces=1,  # number of faces to track in each frame
-                    #     refine_landmarks=True,  # includes iris landmarks in the face mesh model
-                    #     min_detection_confidence=0.5,
-                    #     min_tracking_confidence=0.5) as face_mesh:
+                    with mp_face_mesh.FaceMesh(
+                        max_num_faces=1,  # number of faces to track in each frame
+                        refine_landmarks=True,  # includes iris landmarks in the face mesh model
+                        min_detection_confidence=0.5,
+                        min_tracking_confidence=0.5) as face_mesh:
                             
-                    #         image_mp = cv2.cvtColor(img_face, cv2.COLOR_BGR2RGB) 
-                    #         results = face_mesh.process(image_mp)
+                            image_mp = cv2.cvtColor(img_face, cv2.COLOR_BGR2RGB) 
+                            results = face_mesh.process(image_mp)
 
-                    #         if results.multi_face_landmarks:
-                    #             for idx in index_list:
+                            if results.multi_face_landmarks:
+                                for idx in index_list:
                                     
-                    #                 x = results.multi_face_landmarks[0].landmark[idx].x*img_face_w + x_min
-                    #                 y = results.multi_face_landmarks[0].landmark[idx].y*img_face_h + y_min
-                    #                 cv2.circle(im0, (int(x), int(y)), 3, (0,255,0), -1)
+                                    x = results.multi_face_landmarks[0].landmark[idx].x*img_face_w + x_min
+                                    y = results.multi_face_landmarks[0].landmark[idx].y*img_face_h + y_min
+                                    cv2.circle(im0, (int(x), int(y)), 3, (0,255,0), -1)
 
-                                    # print(idx)
-                                    # print((results.multi_face_landmarks[0].landmark[idx].x*img_face_w + x_min)/img0_w)
-                                    # print((results.multi_face_landmarks[0].landmark[idx].y*img_face_h + y_min)/img0_h)
+                                    print(idx)
+                                    print(xywh)
+                                    print((results.multi_face_landmarks[0].landmark[idx].x*img_face_w + x_min)/img0_w)
+                                    print((results.multi_face_landmarks[0].landmark[idx].y*img_face_h + y_min)/img0_h)
                                     
 
 

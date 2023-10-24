@@ -1,14 +1,11 @@
 # yolov7-face
 
-**2023.04** [yolov8-face](https://github.com/derronqi/yolov8-face) (🔥🔥🔥↑) 
-
 ### New feature
 
 * Dynamic keypoints
 * WingLoss
 * Efficient backbones
 * EIOU and SIOU
-
 
 
 | Method           |  Test Size | Easy  | Medium | Hard  | FLOPs (B) @640 | Google | Baidu |
@@ -22,24 +19,19 @@
 | yolov7-w6        | 960        | 96.4  | 95.0   | 88.3  |  89.0          | [google](https://drive.google.com/file/d/1U_kH7Xa_9-2RK2hnyvsyMLKdYB0h4MJS/view?usp=sharing) | - |
 | yolov7-w6+TTA    | 1280       | 96.9  | 95.8   | 90.4  |  89.0          | [google](https://drive.google.com/file/d/1U_kH7Xa_9-2RK2hnyvsyMLKdYB0h4MJS/view?usp=sharing) | - |
 
+#### How to use 
+
+```
+./launch_yolov7.sh
+1. you can choose the enviroment by your self
+2. choose the weights you want to use
+3. choose the mode you want to use
+```
 
 
 #### Dataset
 
-[WiderFace](http://shuoyang1213.me/WIDERFACE/)
-
-[yolov7-face-label](https://drive.google.com/file/d/1FsZ0ACah386yUufi0E_PVsRW_0VtZ1bd/view?usp=sharing)
-
-#### Test
-
-![](data/images/result.jpg)
-
-
-#### Demo
-
-* [ncnn_Android_face](https://github.com/FeiGeChuanShu/ncnn_Android_face)
-
-* [yolov7-detect-face-onnxrun-cpp-py](https://github.com/hpc203/yolov7-detect-face-onnxrun-cpp-py)
+- own custom dataset
 
 #### References
 

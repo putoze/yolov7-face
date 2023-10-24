@@ -13,10 +13,22 @@ from models.experimental import attempt_load
 from utils.datasets import LoadStreams, LoadImages
 from utils.general import check_img_size, check_requirements, check_imshow, non_max_suppression, apply_classifier, \
     scale_coords, xyxy2xywh, strip_optimizer, set_logging, increment_path, save_one_box
-from utils.plots import colors, plot_one_box
+from utils.plots import colors, plot_one_box, show_fps
 from utils.torch_utils import select_device, load_classifier, time_synchronized
 
-import mediapipe as mp
+## 6D RepNet golbal
+import numpy as np
+from PIL import Image
+from torchvision import transforms
+from numpy.lib.function_base import _quantile_unchecked
+from matplotlib import pyplot as plt
+import matplotlib
+
+## 6D RepNet local
+os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
+from model_6DRepNet import SixDRepNet
+import utils_with_6D
+matplotlib.use('TkAgg')
 
 # coordinate
 coordinates = []
@@ -70,18 +82,33 @@ def detect(opt):
     else:
         dataset = LoadImages(source, img_size=imgsz, stride=stride)
 
-
-    # mesh
-    mp_face_mesh = mp.solutions.face_mesh  # initialize the face mesh model
-    mp_drawing = mp.solutions.drawing_utils             # mediapipe draw
-    mp_drawing_styles = mp.solutions.drawing_styles     # mediapipe style
-    mp_face_mesh = mp.solutions.face_mesh               # mediapipe mesh
-    drawing_spec = mp_drawing.DrawingSpec(thickness=1, circle_radius=1)  # detail
-
     # Run inference
     if device.type != 'cpu':
         model(torch.zeros(1, 3, imgsz, imgsz).to(device).type_as(next(model.parameters())))  # run once
+
+    # 6D_Repnet
+    transformations_6D = transforms.Compose([transforms.Resize(224),
+                                      transforms.CenterCrop(224),
+                                      transforms.ToTensor(),
+                                      transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
+    snapshot_path_6D = '../../weights/6DRepNet/6DRepNet_300W_LP_AFLW2000.pth'
+    model_6DRepNet = SixDRepNet(backbone_name='RepVGG-B1g2',
+                       backbone_file='',
+                       deploy=True,
+                       pretrained=False)
+
+    saved_state_dict = torch.load(os.path.join(
+        snapshot_path_6D), map_location='cpu')
+
+    if 'model_state_dict' in saved_state_dict:
+        model_6DRepNet.load_state_dict(saved_state_dict['model_state_dict'])
+    else:
+        model_6DRepNet.load_state_dict(saved_state_dict)
+    model_6DRepNet.to(device)
+    # End 6D_Repnet
+
     t0 = time.time()
+
     for path, img, im0s, vid_cap in dataset:
         img = torch.from_numpy(img).to(device)
         img = img.half() if half else img.float()  # uint8 to fp16/32
@@ -114,9 +141,8 @@ def detect(opt):
             s += '%gx%g ' % img.shape[2:]  # print string
             gn = torch.tensor(im0.shape)[[1, 0, 1, 0]]  # normalization gain whwh
 
-
+            start = time.time()            
             if len(det):
-                
                 # Rescale boxes from img_size to im0 size
                 scale_coords(img.shape[2:], det[:, :4], im0.shape, kpt_label=False)
                 scale_coords(img.shape[2:], det[:, 6:], im0.shape, kpt_label=kpt_label, step=3)
@@ -125,83 +151,81 @@ def detect(opt):
                 for c in det[:, 5].unique():
                     n = (det[:, 5] == c).sum()  # detections per class
                     s += f"{n} {names[int(c)]}{'s' * (n > 1)}, "  # add to string
+            
+                # self code
+                face_max = 0
+                steps = 3
+                driver_face_roi = []
+                coordinate = [0 for kid in range(kpt_label)]
+                # find driver face
+                for det_index, (*xyxy, conf, cls) in enumerate(reversed(det[:,:6])):
+                    kpts = det[det_index, 6:]
+                    if names[int(cls)] == 'face':
+                        bb = [int(x) for x in xyxy]
+                        face_area = (bb[2] - bb[0])*(bb[3]-bb[1])
+                        if(face_area > face_max) :
+                            face_max = face_area
+                            driver_face_roi = bb
+                            # landmark points
+                            for kid in range(kpt_label):
+                                x_coord, y_coord = kpts[steps * kid], kpts[steps * kid + 1]
+                                if not (x_coord % 640 == 0 or y_coord % 640 == 0):
+                                    coordinate[kid] = (int(x_coord),int(y_coord))
+                                else :
+                                    coordinate[kid] = 0
+
+                if len(driver_face_roi) == 0:
+                    break
+
+                if len(coordinate[14]) == 1:
+                    nose_point = ((driver_face_roi[0]+driver_face_roi[2])/2,
+                                  (driver_face_roi[1]+driver_face_roi[3])/2)
+                else :
+                    nose_point = coordinate[14]
+                
+                # 6DRepNet
+                x_min,y_min,x_max,y_max = driver_face_roi
+                bbox_width = abs(x_max - x_min)
+                bbox_height = abs(y_max - y_min)
+
+                x_min = max(0, x_min-int(0.2*bbox_height))
+                y_min = max(0, y_min-int(0.2*bbox_width))
+                x_max = x_max+int(0.2*bbox_height)
+                y_max = y_max+int(0.2*bbox_width)
+
+                img = im0[y_min:y_max, x_min:x_max]
+                img = Image.fromarray(img)
+                img = img.convert('RGB')
+                img = transformations_6D(img)
+
+                img = torch.Tensor(img[None, :]).to(device)
+
+                R_pred = model_6DRepNet(img)
+
+                euler = utils_with_6D.compute_euler_angles_from_rotation_matrices(
+                    R_pred)*180/np.pi
+                
+                p_pred_deg = euler[:, 0].cpu()
+                y_pred_deg = euler[:, 1].cpu()
+                r_pred_deg = euler[:, 2].cpu()
+
+                # utils_with_6D.plot_pose_cube(im0,  y_pred_deg, p_pred_deg, r_pred_deg, x_min + int(.5*(
+                #     x_max-x_min)), y_min + int(.5*(y_max-y_min)), size=bbox_width)
+                height, width = im0.shape[:2]
+                tdx = width - 70
+                tdy = 70
+                utils_with_6D.draw_axis(im0,y_pred_deg,p_pred_deg,r_pred_deg,tdx,tdy, size = 50)
+                utils_with_6D.draw_gaze_6D(nose_point,im0,y_pred_deg,p_pred_deg,color=(0,0,255))
+
+                # End 6DRepNet
 
                 # Write results
                 for det_index, (*xyxy, conf, cls) in enumerate(reversed(det[:,:6])):
-                    bb = [int(x) for x in xyxy]
-                    x_min,y_min,x_max,y_max = bb
-                    img_face = im0[y_min:y_max, x_min:x_max, :]
-                    img_face_h,img_face_w = img_face.shape[:2]
-                    img0_h,img0_w = im0.shape[:2]
-
-                    if img_face_h == 0 or img_face_w == 0:
-                        break
-
                     if save_txt:  # Write to file
                         xywh = (xyxy2xywh(torch.tensor(xyxy).view(1, 4)) / gn).view(-1).tolist()  # normalized xywh
                         line = (cls, *xywh, conf) if opt.save_conf else (cls, *xywh)  # label format
-
-                        index_list = [33,159,158,133,153,145,468,362,385,386,263,374,380,473,4,0,37,40,61,91,84,17,314,321,291,270,267,
-                                        13,81,78,88,14,402,308,311,152]
-                        
-
                         with open(txt_path + '.txt', 'a') as f:
-                            f.write(('%g ' * len(line)).rstrip() % line + ' ')
-                            with mp_face_mesh.FaceMesh(
-                                max_num_faces=1,  # number of faces to track in each frame
-                                refine_landmarks=True,  # includes iris landmarks in the face mesh model
-                                min_detection_confidence=0.5,
-                                min_tracking_confidence=0.5) as face_mesh:
-                                    
-                                    image_mp = cv2.cvtColor(img_face, cv2.COLOR_BGR2RGB) 
-                                    results = face_mesh.process(image_mp)
-
-                                    if results.multi_face_landmarks:
-                                        for idx in index_list:
-                                            x = results.multi_face_landmarks[0].landmark[idx].x*img_face_w + x_min
-                                            x = x / img0_w
-                                            y = results.multi_face_landmarks[0].landmark[idx].y*img_face_h + y_min
-                                            y = y / img0_h
-
-                                            f.write(str(x) + ' ')
-                                            f.write(str(y) + ' ')
-                                            f.write('2.000 ')
-                                    else:
-                                        for i in range(len(index_list)):
-                                            f.write('0.000 0.000 0.000 ')
-                            f.write('\n')
-
-
-                    # -------- Test code ---------
-                    xywh = (xyxy2xywh(torch.tensor(xyxy).view(1, 4)) / gn).view(-1).tolist()  # normalized xywh
-
-
-                    index_list = [33,159,158,133,153,145,468,362,385,386,263,374,380,473,4,61,40,37,0,267,270,291,321,314,17,84,91,
-                                  78,81,13,311,308,402,14,88,152]
-                        
-
-                    with mp_face_mesh.FaceMesh(
-                        max_num_faces=1,  # number of faces to track in each frame
-                        refine_landmarks=True,  # includes iris landmarks in the face mesh model
-                        min_detection_confidence=0.5,
-                        min_tracking_confidence=0.5) as face_mesh:
-                            
-                            image_mp = cv2.cvtColor(img_face, cv2.COLOR_BGR2RGB) 
-                            results = face_mesh.process(image_mp)
-
-                            if results.multi_face_landmarks:
-                                for idx in index_list:
-                                    
-                                    x = results.multi_face_landmarks[0].landmark[idx].x*img_face_w + x_min
-                                    y = results.multi_face_landmarks[0].landmark[idx].y*img_face_h + y_min
-                                    cv2.circle(im0, (int(x), int(y)), 3, (0,255,0), -1)
-
-                                    print(idx)
-                                    print(xywh)
-                                    print((results.multi_face_landmarks[0].landmark[idx].x*img_face_w + x_min)/img0_w)
-                                    print((results.multi_face_landmarks[0].landmark[idx].y*img_face_h + y_min)/img0_h)
-                                    
-
+                            f.write(('%g ' * len(line)).rstrip() % line + '\n')
 
                     if save_img or opt.save_crop or view_img:  # Add bbox to image
                         c = int(cls)  # integer class
@@ -219,17 +243,14 @@ def detect(opt):
                         with open(txt_path + '.txt', 'a') as f:
                             f.write(('%g ' * len(line)).rstrip() % line + '\n')
 
-
+            end = time.time()
             # Print time (inference + NMS)
-            #print(f'{s}Done. ({t2 - t1:.3f}s)')
+            print(f'{s}Done. ({(1E3 * (t2 - t1)):.1f}ms) Inference')
 
             # Stream results
             if view_img:
-                if coordinates != []:
-                    for cor in coordinates:
-                        cv2.circle(im0,cor,100,(255,0,0),-1)
-                              
-
+                fps = 1.0 / (end - start)
+                im0 = show_fps(im0, fps)
                 cv2.imshow(window_name, im0)
                 key = cv2.waitKey(1)
                 # cv2.imshow(str(p), im0)

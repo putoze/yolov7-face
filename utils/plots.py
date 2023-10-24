@@ -498,3 +498,13 @@ def plot_results(start=0, stop=0, bucket='', id=(), labels=(), save_dir=''):
 
     ax[1].legend()
     fig.savefig(Path(save_dir) / 'results.png', dpi=200)
+
+
+def show_fps(img, fps):
+    """Draw fps number at down-right corner of the image."""
+    font = cv2.FONT_HERSHEY_PLAIN
+    line = cv2.LINE_AA
+    fps_text = 'FPS: {:.2f}'.format(fps)
+    cv2.putText(img, fps_text, (img.shape[1]-99, img.shape[0]-20), font, 1.0, (32, 32, 32), 4, line) # (11, 20)
+    cv2.putText(img, fps_text, (img.shape[1]-100, img.shape[0]-20), font, 1.0, (240, 240, 240), 1, line) # (10, 20)
+    return img

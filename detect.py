@@ -13,11 +13,9 @@ from models.experimental import attempt_load
 from utils.datasets import LoadStreams, LoadImages
 from utils.general import check_img_size, check_requirements, check_imshow, non_max_suppression, apply_classifier, \
     scale_coords, xyxy2xywh, strip_optimizer, set_logging, increment_path, save_one_box
-from utils.plots import colors, plot_one_box
+from utils.plots import colors, plot_one_box, show_fps
 from utils.torch_utils import select_device, load_classifier, time_synchronized
 
-# coordinate
-coordinates = []
 window_name = 'YOLOV7-face'
 
 def detect(opt):
@@ -103,6 +101,8 @@ def detect(opt):
             txt_path = str(save_dir / 'labels' / p.stem) + ('' if dataset.mode == 'image' else f'_{frame}')  # img.txt
             s += '%gx%g ' % img.shape[2:]  # print string
             gn = torch.tensor(im0.shape)[[1, 0, 1, 0]]  # normalization gain whwh
+
+            start = time.time()            
             if len(det):
                 # Rescale boxes from img_size to im0 size
                 scale_coords(img.shape[2:], det[:, :4], im0.shape, kpt_label=False)
@@ -112,6 +112,32 @@ def detect(opt):
                 for c in det[:, 5].unique():
                     n = (det[:, 5] == c).sum()  # detections per class
                     s += f"{n} {names[int(c)]}{'s' * (n > 1)}, "  # add to string
+                
+
+                # self code
+                face_max = 0
+                steps = 3
+                driver_face_roi = []
+                coordinate = [0 for kid in range(kpt_label)]
+                # find driver face
+                for det_index, (*xyxy, conf, cls) in enumerate(reversed(det[:,:6])):
+                    kpts = det[det_index, 6:]
+                    if names[int(cls)] == 'face':
+                        bb = [int(x) for x in xyxy]
+                        face_area = (bb[2] - bb[0])*(bb[3]-bb[1])
+                        if(face_area > face_max) :
+                            face_max = face_area
+                            driver_face_roi = bb
+                            # landmark points
+                            for kid in range(kpt_label):
+                                x_coord, y_coord = kpts[steps * kid], kpts[steps * kid + 1]
+                                if not (x_coord % 640 == 0 or y_coord % 640 == 0):
+                                    coordinate[kid] = (int(x_coord),int(y_coord))
+                                else :
+                                    coordinate[kid] = 0
+
+                if len(driver_face_roi) == 0:
+                    break
 
                 # Write results
                 for det_index, (*xyxy, conf, cls) in enumerate(reversed(det[:,:6])):
@@ -137,14 +163,14 @@ def detect(opt):
                         with open(txt_path + '.txt', 'a') as f:
                             f.write(('%g ' * len(line)).rstrip() % line + '\n')
 
+            end = time.time()
             # Print time (inference + NMS)
             #print(f'{s}Done. ({t2 - t1:.3f}s)')
 
             # Stream results
             if view_img:
-                # if coordinates != []:
-                #     for cor in coordinates:
-                #         cv2.circle(im0,cor,100,(255,0,0),-1)
+                fps = 1.0 / (end - start)
+                im0 = show_fps(im0, fps)
                 cv2.imshow(window_name, im0)
                 key = cv2.waitKey(1)
                 # cv2.imshow(str(p), im0)

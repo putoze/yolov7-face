@@ -139,9 +139,8 @@ def detect(opt):
                     xywh = (xyxy2xywh(torch.tensor(driver_face_local).view(1, 4)) / gn).view(-1).tolist()  # normalized xywh
                     line = (cls, *xywh, conf) if opt.save_conf else (cls, *xywh)  # label format
 
-                    index_list = [33,159,158,133,153,145,468,362,385,386,263,374,380,473,4,0,37,40,61,91,84,17,314,321,291,270,267,
-                                    13,81,78,88,14,402,308,311,152]
-                    
+                    index_list = [33,159,158,133,153,145,468,362,385,386,263,374,380,473,4,61,40,37,0,267,270,291,321,314,17,84,91,
+                                  78,81,13,311,308,402,14,88,152]
 
                     with open(txt_path + '.txt', 'a') as f:
                         f.write(('%g ' * len(line)).rstrip() % line + ' ')

@@ -13,13 +13,16 @@ from models.experimental import attempt_load
 from utils.datasets import LoadStreams, LoadImages
 from utils.general import check_img_size, check_requirements, check_imshow, non_max_suppression, apply_classifier, \
     scale_coords, xyxy2xywh, strip_optimizer, set_logging, increment_path, save_one_box
-from utils.plots import colors, plot_one_box
+from utils.plots import colors, plot_one_box, show_fps
 from utils.torch_utils import select_device, load_classifier, time_synchronized
 
-import mediapipe as mp
+# alert
+import numpy as np
+import argparse
+import time
+from threading import Thread
+from alert.drowsiness_yawn import alarm,eye_aspect_ratio,final_ear,lip_distance
 
-# coordinate
-coordinates = []
 window_name = 'YOLOV7-face'
 
 def detect(opt):
@@ -70,13 +73,14 @@ def detect(opt):
     else:
         dataset = LoadImages(source, img_size=imgsz, stride=stride)
 
-
-    # mesh
-    mp_face_mesh = mp.solutions.face_mesh  # initialize the face mesh model
-    mp_drawing = mp.solutions.drawing_utils             # mediapipe draw
-    mp_drawing_styles = mp.solutions.drawing_styles     # mediapipe style
-    mp_face_mesh = mp.solutions.face_mesh               # mediapipe mesh
-    drawing_spec = mp_drawing.DrawingSpec(thickness=1, circle_radius=1)  # detail
+    # Alert
+    EYE_AR_THRESH = 0.3
+    EYE_AR_CONSEC_FRAMES = 30
+    YAWN_THRESH = 20
+    alarm_status = False
+    alarm_status2 = False
+    saying = False
+    COUNTER = 0
 
     # Run inference
     if device.type != 'cpu':
@@ -114,9 +118,8 @@ def detect(opt):
             s += '%gx%g ' % img.shape[2:]  # print string
             gn = torch.tensor(im0.shape)[[1, 0, 1, 0]]  # normalization gain whwh
 
-
+            start = time.time()            
             if len(det):
-                
                 # Rescale boxes from img_size to im0 size
                 scale_coords(img.shape[2:], det[:, :4], im0.shape, kpt_label=False)
                 scale_coords(img.shape[2:], det[:, 6:], im0.shape, kpt_label=kpt_label, step=3)
@@ -125,83 +128,89 @@ def detect(opt):
                 for c in det[:, 5].unique():
                     n = (det[:, 5] == c).sum()  # detections per class
                     s += f"{n} {names[int(c)]}{'s' * (n > 1)}, "  # add to string
+                
+
+                # self code
+                face_max = 0
+                steps = 3
+                driver_face_roi = []
+                coordinate = [0 for kid in range(kpt_label)]
+                # find driver face
+                for det_index, (*xyxy, conf, cls) in enumerate(reversed(det[:,:6])):
+                    kpts = det[det_index, 6:]
+                    if names[int(cls)] == 'face':
+                        bb = [int(x) for x in xyxy]
+                        face_area = (bb[2] - bb[0])*(bb[3]-bb[1])
+                        if(face_area > face_max) :
+                            face_max = face_area
+                            driver_face_roi = bb
+                            # landmark points
+                            for kid in range(kpt_label):
+                                x_coord, y_coord = kpts[steps * kid], kpts[steps * kid + 1]
+                                if not (x_coord % 640 == 0 or y_coord % 640 == 0):
+                                    coordinate[kid] = (int(x_coord),int(y_coord))
+                                else :
+                                    coordinate[kid] = 0
+
+                if len(driver_face_roi) == 0:
+                    break
+                
+                # Alert
+                leftEye = coordinate[0:6]
+                rightEye = coordinate[7:13]
+                ear = final_ear(coordinate[0:6],coordinate[7:13])
+                distance = lip_distance(coordinate[18:35])
+
+                leftEyeHull = cv2.convexHull(leftEye)
+                rightEyeHull = cv2.convexHull(rightEye)
+                cv2.drawContours(frame, [leftEyeHull], -1, (0, 255, 0), 1)
+                cv2.drawContours(frame, [rightEyeHull], -1, (0, 255, 0), 1)
+
+                lip = coordinate[15:27]
+                cv2.drawContours(frame, [lip], -1, (0, 255, 0), 1)
+
+                if ear < EYE_AR_THRESH:
+                    COUNTER += 1
+
+                    if COUNTER >= EYE_AR_CONSEC_FRAMES:
+                        if alarm_status == False:
+                            alarm_status = True
+                            t = Thread(target=alarm, args=('wake up sir',))
+                            t.deamon = True
+                            t.start()
+
+                        cv2.putText(frame, "DROWSINESS ALERT!", (10, 30),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+
+                else:
+                    COUNTER = 0
+                    alarm_status = False
+
+                if (distance > YAWN_THRESH):
+                        cv2.putText(frame, "Yawn Alert", (10, 30),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+                        if alarm_status2 == False and saying == False:
+                            alarm_status2 = True
+                            t = Thread(target=alarm, args=('take some fresh air sir',))
+                            t.deamon = True
+                            t.start()
+                else:
+                    alarm_status2 = False
+
+                cv2.putText(frame, "EAR: {:.2f}".format(ear), (300, 30),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+                cv2.putText(frame, "YAWN: {:.2f}".format(distance), (300, 60),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+                
+                # End Alert
 
                 # Write results
                 for det_index, (*xyxy, conf, cls) in enumerate(reversed(det[:,:6])):
-                    bb = [int(x) for x in xyxy]
-                    x_min,y_min,x_max,y_max = bb
-                    img_face = im0[y_min:y_max, x_min:x_max, :]
-                    img_face_h,img_face_w = img_face.shape[:2]
-                    img0_h,img0_w = im0.shape[:2]
-
-                    if img_face_h == 0 or img_face_w == 0:
-                        break
-
                     if save_txt:  # Write to file
                         xywh = (xyxy2xywh(torch.tensor(xyxy).view(1, 4)) / gn).view(-1).tolist()  # normalized xywh
                         line = (cls, *xywh, conf) if opt.save_conf else (cls, *xywh)  # label format
-
-                        index_list = [33,159,158,133,153,145,468,362,385,386,263,374,380,473,4,0,37,40,61,91,84,17,314,321,291,270,267,
-                                        13,81,78,88,14,402,308,311,152]
-                        
-
                         with open(txt_path + '.txt', 'a') as f:
-                            f.write(('%g ' * len(line)).rstrip() % line + ' ')
-                            with mp_face_mesh.FaceMesh(
-                                max_num_faces=1,  # number of faces to track in each frame
-                                refine_landmarks=True,  # includes iris landmarks in the face mesh model
-                                min_detection_confidence=0.5,
-                                min_tracking_confidence=0.5) as face_mesh:
-                                    
-                                    image_mp = cv2.cvtColor(img_face, cv2.COLOR_BGR2RGB) 
-                                    results = face_mesh.process(image_mp)
-
-                                    if results.multi_face_landmarks:
-                                        for idx in index_list:
-                                            x = results.multi_face_landmarks[0].landmark[idx].x*img_face_w + x_min
-                                            x = x / img0_w
-                                            y = results.multi_face_landmarks[0].landmark[idx].y*img_face_h + y_min
-                                            y = y / img0_h
-
-                                            f.write(str(x) + ' ')
-                                            f.write(str(y) + ' ')
-                                            f.write('2.000 ')
-                                    else:
-                                        for i in range(len(index_list)):
-                                            f.write('0.000 0.000 0.000 ')
-                            f.write('\n')
-
-
-                    # -------- Test code ---------
-                    xywh = (xyxy2xywh(torch.tensor(xyxy).view(1, 4)) / gn).view(-1).tolist()  # normalized xywh
-
-
-                    index_list = [33,159,158,133,153,145,468,362,385,386,263,374,380,473,4,61,40,37,0,267,270,291,321,314,17,84,91,
-                                  78,81,13,311,308,402,14,88,152]
-                        
-
-                    with mp_face_mesh.FaceMesh(
-                        max_num_faces=1,  # number of faces to track in each frame
-                        refine_landmarks=True,  # includes iris landmarks in the face mesh model
-                        min_detection_confidence=0.5,
-                        min_tracking_confidence=0.5) as face_mesh:
-                            
-                            image_mp = cv2.cvtColor(img_face, cv2.COLOR_BGR2RGB) 
-                            results = face_mesh.process(image_mp)
-
-                            if results.multi_face_landmarks:
-                                for idx in index_list:
-                                    
-                                    x = results.multi_face_landmarks[0].landmark[idx].x*img_face_w + x_min
-                                    y = results.multi_face_landmarks[0].landmark[idx].y*img_face_h + y_min
-                                    cv2.circle(im0, (int(x), int(y)), 3, (0,255,0), -1)
-
-                                    print(idx)
-                                    print(xywh)
-                                    print((results.multi_face_landmarks[0].landmark[idx].x*img_face_w + x_min)/img0_w)
-                                    print((results.multi_face_landmarks[0].landmark[idx].y*img_face_h + y_min)/img0_h)
-                                    
-
+                            f.write(('%g ' * len(line)).rstrip() % line + '\n')
 
                     if save_img or opt.save_crop or view_img:  # Add bbox to image
                         c = int(cls)  # integer class
@@ -219,17 +228,14 @@ def detect(opt):
                         with open(txt_path + '.txt', 'a') as f:
                             f.write(('%g ' * len(line)).rstrip() % line + '\n')
 
-
+            end = time.time()
             # Print time (inference + NMS)
             #print(f'{s}Done. ({t2 - t1:.3f}s)')
 
             # Stream results
             if view_img:
-                if coordinates != []:
-                    for cor in coordinates:
-                        cv2.circle(im0,cor,100,(255,0,0),-1)
-                              
-
+                fps = 1.0 / (end - start)
+                im0 = show_fps(im0, fps)
                 cv2.imshow(window_name, im0)
                 key = cv2.waitKey(1)
                 # cv2.imshow(str(p), im0)

@@ -48,6 +48,14 @@ echo [4]: yolov7-lite-t-36lmk-80epochs-20231019.pt
 echo ----------------
 echo [5]: yolov7-lite-t-wilderface-36lmk-80epochs.pt
 echo ----------------
+echo [6]: yolov7-lite-t-Mouth-36lmk-80epochs.pt
+echo ----------------
+echo [7]: yolov7-lite-t-Mouth+own-36lmk-80epochs.pt
+echo ----------------
+echo [8]: yolov7-lite-t-Mouth+own+mirrir-36lmk-80epochs.pt
+echo ----------------
+echo [9]: best.pt
+echo ----------------
 echo [n]: None
 echo -n "Press enter to start it:"
 
@@ -71,6 +79,18 @@ fi
 if [ $MY_Weights -eq 5 ] ; then
     Weights='yolov7-lite-t-wilderface-36lmk-80epochs/yolov7-lite-t-wilderface-36lmk-80epochs.pt'
 fi 
+if [ $MY_Weights -eq 6 ] ; then
+    Weights='yolov7-lite-t-Mouth-36lmk-80epochs/yolov7-lite-t-Mouth-36lmk-80epochs.pt'
+fi
+if [ $MY_Weights -eq 7 ] ; then
+    Weights='yolov7-lite-t-Mouth+own-36lmk-80epochs/yolov7-lite-t-Mouth+own-36lmk-80epochs.pt'
+fi
+if [ $MY_Weights -eq 8 ] ; then
+    Weights='yolov7-lite-t-Mouth+own+mirrir-36lmk-80epochs/yolov7-lite-t-Mouth+own+mirrir-36lmk-80epochs.pt'
+fi
+if [ $MY_Weights -eq 9 ] ; then
+    Weights='best.pt'
+fi
 echo $Weights
 
 #============================================================================ 
@@ -90,6 +110,10 @@ echo [4]: detect mesh_multi + save-txt
 echo ----------------
 echo [5]: otocam mesh_multi 
 echo ----------------
+echo [6]: img detect
+echo ----------------
+echo [7]: otocam detect_6D
+echo ----------------
 echo -n "Press enter to start it:"
 
 read MY_mode
@@ -107,8 +131,7 @@ if [ $MY_mode -eq 0 ] ; then
     --iou-thres 0.5 \
     --source cam.txt \
     --kpt-label 36
-    # --weight ./torch_yolov7_weight/yolov7-custom_v3/best.pt \
-    
+
 fi
 
 #============================================================================ 
@@ -191,6 +214,40 @@ if [ $MY_mode -eq 5 ] ; then
     --source cam.txt 
 
 fi
+
+#============================================================================ 
+
+if [ $MY_mode -eq 6 ] ; then
+    echo ============
+    echo 「img detect」
+    echo ============
+
+    python detect.py \
+    --weight ../../weights/yolov7-face/$Weights \
+    --conf-thres 0.2 \
+    --iou-thres 0.5 \
+    --source ./img/ \
+    --kpt-label 36
+    # --weight ./torch_yolov7_weight/yolov7-custom_v3/best.pt \
+    
+fi
+
+#============================================================================ 
+
+if [ $MY_mode -eq 7 ] ; then
+    echo ============
+    echo 「otocam  detect_6D」
+    echo ============
+
+    python detect_6D.py \
+    --weight ../../weights/yolov7-face/$Weights \
+    --conf-thres 0.2 \
+    --iou-thres 0.5 \
+    --source cam.txt \
+    --kpt-label 36
+
+fi
+
 
 #============================================================================ End
 echo [===YOLO===] ok!

@@ -54,7 +54,13 @@ echo [7]: yolov7-lite-t-Mouth+own-36lmk-80epochs.pt
 echo ----------------
 echo [8]: yolov7-lite-t-Mouth+own+mirrir-36lmk-80epochs.pt
 echo ----------------
-echo [9]: best.pt
+echo [9]: yolov7-lite-t-Mouth+own+mirrir-36lmk-600epochs.pt
+echo ----------------
+echo [10]: yolov7-lite-t-Mouth+own+mirrir-36lmk-pre-600epochs.pt
+echo ----------------
+echo [11]: yolov7-lite-t-Mouth+own+mirrir-36lmk-2200epochs.pt
+echo ----------------
+echo [12]: yolov7-lite-t-Mouth+own+mirrir-34lmk-2200epochs.pt
 echo ----------------
 echo [n]: None
 echo -n "Press enter to start it:"
@@ -89,7 +95,16 @@ if [ $MY_Weights -eq 8 ] ; then
     Weights='yolov7-lite-t-Mouth+own+mirrir-36lmk-80epochs/yolov7-lite-t-Mouth+own+mirrir-36lmk-80epochs.pt'
 fi
 if [ $MY_Weights -eq 9 ] ; then
-    Weights='best.pt'
+    Weights='yolov7-lite-t-Mouth+own+mirrir-36lmk-600epochs/yolov7-lite-t-Mouth+own+mirrir-36lmk-600epochs.pt'
+fi
+if [ $MY_Weights -eq 10 ] ; then
+    Weights='yolov7-lite-t-Mouth+own+mirrir-36lmk-pre-600epochs/yolov7-lite-t-Mouth+own+mirrir-36lmk-pre-600epochs.pt'
+fi
+if [ $MY_Weights -eq 11 ] ; then
+    Weights='yolov7-lite-t-Mouth+own+mirrir-36lmk-2200epochs/best.pt'
+fi
+if [ $MY_Weights -eq 12 ] ; then
+    Weights='yolov7-lite-t-Mouth+own+mirrir-34lmk-2200epochs/best.pt'
 fi
 echo $Weights
 
@@ -114,6 +129,8 @@ echo [6]: img detect
 echo ----------------
 echo [7]: otocam detect_6D
 echo ----------------
+echo [8]: otocam detect_pnp
+echo ----------------
 echo -n "Press enter to start it:"
 
 read MY_mode
@@ -130,7 +147,8 @@ if [ $MY_mode -eq 0 ] ; then
     --conf-thres 0.2 \
     --iou-thres 0.5 \
     --source cam.txt \
-    --kpt-label 36
+    --kpt-label 34 \
+    --project ../yolov7-face-runs/cam/
 
 fi
 
@@ -145,8 +163,8 @@ if [ $MY_mode -eq 1 ] ; then
     --source /home/joe/Desktop/Camera_oToCAM250/2023_0816_otocam_datavideo/output29.avi \
     --conf-thres 0.2 \
     --iou-thres 0.5 \
-    --kpt-label 36
-
+    --kpt-label 36 \
+    --project ../yolov7-face-runs/video/
 
 fi
 
@@ -162,7 +180,7 @@ if [ $MY_mode -eq 2 ] ; then
     --conf-thres 0.2 \
     --iou-thres 0.5 \
     --source/media/joe/Xavierssd/widerface/WIDER_train/images/ \
-    --save-txt
+    --save-txt \
 
 fi
 
@@ -227,8 +245,8 @@ if [ $MY_mode -eq 6 ] ; then
     --conf-thres 0.2 \
     --iou-thres 0.5 \
     --source ./img/ \
-    --kpt-label 36
-    # --weight ./torch_yolov7_weight/yolov7-custom_v3/best.pt \
+    --kpt-label 36 \
+    --project ../yolov7-face-runs/img/
     
 fi
 
@@ -244,7 +262,25 @@ if [ $MY_mode -eq 7 ] ; then
     --conf-thres 0.2 \
     --iou-thres 0.5 \
     --source cam.txt \
-    --kpt-label 36
+    --kpt-label 36 \
+    --project ../yolov7-face-runs/cam/
+
+fi
+
+#============================================================================ 
+
+if [ $MY_mode -eq 8 ] ; then
+    echo ============
+    echo 「otocam  detect_pnp」
+    echo ============
+
+    python detect_pnp.py \
+    --weight ../../weights/yolov7-face/$Weights \
+    --conf-thres 0.2 \
+    --iou-thres 0.5 \
+    --source 8 \
+    --kpt-label 34 \
+    --project ../yolov7-face-runs/cam/
 
 fi
 

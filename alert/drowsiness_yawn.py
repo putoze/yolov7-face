@@ -5,6 +5,7 @@ import time
 import dlib
 import cv2
 import os
+from scipy.spatial import distance as dist
 
 def alarm(msg):
     global alarm_status
@@ -45,8 +46,8 @@ def lip_distance(mouth):
     top_lip = mouth[2:5]
     top_lip = np.concatenate((top_lip, mouth[13:16]))
 
-    low_lip = shape[8:11]
-    low_lip = np.concatenate((low_lip, shape[17:20]))
+    low_lip = mouth[8:11]
+    low_lip = np.concatenate((low_lip, mouth[17:20]))
 
     top_mean = np.mean(top_lip, axis=0)
     low_mean = np.mean(low_lip, axis=0)

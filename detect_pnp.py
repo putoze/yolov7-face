@@ -17,11 +17,15 @@ from utils.plots import colors, plot_one_box, show_fps
 from utils.torch_utils import select_device, load_classifier, time_synchronized
 
 # alert
+from scipy.spatial import distance as dist
 import numpy as np
 import argparse
 import time
 from threading import Thread
 from alert.drowsiness_yawn import alarm,eye_aspect_ratio,final_ear,lip_distance
+
+# 6DRepNet
+import utils_with_6D
 
 window_name = 'YOLOV7-face'
 
@@ -82,6 +86,16 @@ def detect(opt):
     saying = False
     COUNTER = 0
 
+    # 3D model points.
+    model_points = np.array([
+                                (0.0, 0.0, 0.0),             # Nose tip
+                                (0.0, -330.0, -65.0),        # Chin
+                                (-225.0, 170.0, -135.0),     # Left eye left corner
+                                (225.0, 170.0, -135.0),      # Right eye right corne
+                                (-150.0, -150.0, -125.0),    # Left Mouth corner
+                                (150.0, -150.0, -125.0)      # Right mouth corner
+                            ])
+
     # Run inference
     if device.type != 'cpu':
         model(torch.zeros(1, 3, imgsz, imgsz).to(device).type_as(next(model.parameters())))  # run once
@@ -134,7 +148,7 @@ def detect(opt):
                 face_max = 0
                 steps = 3
                 driver_face_roi = []
-                coordinate = [0 for kid in range(kpt_label)]
+                coordinate = [[0,0] for kid in range(kpt_label)]
                 # find driver face
                 for det_index, (*xyxy, conf, cls) in enumerate(reversed(det[:,:6])):
                     kpts = det[det_index, 6:]
@@ -148,61 +162,110 @@ def detect(opt):
                             for kid in range(kpt_label):
                                 x_coord, y_coord = kpts[steps * kid], kpts[steps * kid + 1]
                                 if not (x_coord % 640 == 0 or y_coord % 640 == 0):
-                                    coordinate[kid] = (int(x_coord),int(y_coord))
+                                    coordinate[kid] = [np.int(x_coord),np.int(y_coord)]
                                 else :
-                                    coordinate[kid] = 0
+                                    coordinate[kid] = [0,0]
 
                 if len(driver_face_roi) == 0:
                     break
                 
-                # Alert
-                leftEye = coordinate[0:6]
-                rightEye = coordinate[7:13]
-                ear = final_ear(coordinate[0:6],coordinate[7:13])
-                distance = lip_distance(coordinate[18:35])
+                if len(coordinate[12]) == 1:
+                    nose_point = ((driver_face_roi[0]+driver_face_roi[2])/2,
+                                  (driver_face_roi[1]+driver_face_roi[3])/2)
+                else :
+                    nose_point = coordinate[12]
 
-                leftEyeHull = cv2.convexHull(leftEye)
-                rightEyeHull = cv2.convexHull(rightEye)
-                cv2.drawContours(frame, [leftEyeHull], -1, (0, 255, 0), 1)
-                cv2.drawContours(frame, [rightEyeHull], -1, (0, 255, 0), 1)
+                alert_flag = 1
+                for kid in range(kpt_label):
+                    if coordinate[kid][0] == 0 or coordinate[kid][1] == 0:
+                        alert_flag = 0
 
-                lip = coordinate[15:27]
-                cv2.drawContours(frame, [lip], -1, (0, 255, 0), 1)
-
-                if ear < EYE_AR_THRESH:
-                    COUNTER += 1
-
-                    if COUNTER >= EYE_AR_CONSEC_FRAMES:
-                        if alarm_status == False:
-                            alarm_status = True
-                            t = Thread(target=alarm, args=('wake up sir',))
-                            t.deamon = True
-                            t.start()
-
-                        cv2.putText(frame, "DROWSINESS ALERT!", (10, 30),
-                                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
-
-                else:
-                    COUNTER = 0
-                    alarm_status = False
-
-                if (distance > YAWN_THRESH):
-                        cv2.putText(frame, "Yawn Alert", (10, 30),
-                                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
-                        if alarm_status2 == False and saying == False:
-                            alarm_status2 = True
-                            t = Thread(target=alarm, args=('take some fresh air sir',))
-                            t.deamon = True
-                            t.start()
-                else:
-                    alarm_status2 = False
-
-                cv2.putText(frame, "EAR: {:.2f}".format(ear), (300, 30),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
-                cv2.putText(frame, "YAWN: {:.2f}".format(distance), (300, 60),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+                # headpose
+                size = im0.shape[:2]
                 
+                # Camera internals
+                
+                focal_length = size[1]
+                center = (size[1]/2, size[0]/2)
+                camera_matrix = np.array(
+                                        [[focal_length, 0, center[0]],
+                                        [0, focal_length, center[1]],
+                                        [0, 0, 1]], dtype = "double"
+                                        )
+                                
+                dist_coeffs = np.zeros((4,1)) # Assuming no lens distortion
+                # points_2D_list = [12,33,0,9,13,19]
+                image_points = np.array([coordinate[12],
+                                         coordinate[33],
+                                         coordinate[0],
+                                         coordinate[9],
+                                         coordinate[13],
+                                         coordinate[19]], dtype="double")
+
+                (success, rotation_vector, translation_vector) = cv2.solvePnP(model_points, image_points, camera_matrix, dist_coeffs, flags=cv2.SOLVEPNP_ITERATIVE)
+
+                rvec_matrix = cv2.Rodrigues(rotation_vector)[0]
+                proj_matrix = np.hstack((rvec_matrix, translation_vector))
+                eulerAngles = -cv2.decomposeProjectionMatrix(proj_matrix)[6]
+
+                yaw   = eulerAngles[1]
+                pitch = - eulerAngles[0]
+                roll  = eulerAngles[2]
+
+                tdx = size[1] - 70
+                tdy = 70
+
+                utils_with_6D.draw_axis(im0,yaw,pitch,roll,tdx,tdy, size = 50)
+                utils_with_6D.draw_gaze_6D(nose_point,im0,yaw,pitch,color=(0,0,255))
+
+                # Alert
+                if alert_flag:
+                    coordinate_np = np.array(coordinate)
+                    leftEye = coordinate_np[0:6]
+                    rightEye = coordinate_np[6:12]
+                    # print('leftEye',leftEye,type(leftEye),leftEye.shape)
+                    # print('rightEye',rightEye)
+                    ear = final_ear(leftEye,rightEye)
+                    distance = lip_distance(coordinate_np[13:33])
+
+                    leftEyeHull = cv2.convexHull(leftEye)
+                    rightEyeHull = cv2.convexHull(rightEye)
+                    cv2.drawContours(im0, [leftEyeHull], -1, (0, 255, 0), 1)
+                    cv2.drawContours(im0, [rightEyeHull], -1, (0, 255, 0), 1)
+
+                    lip = coordinate_np[13:25]
+                    cv2.drawContours(im0, [lip], -1, (0, 255, 0), 1)
+
+                    if ear < EYE_AR_THRESH:
+                        COUNTER += 1
+
+                        if COUNTER >= EYE_AR_CONSEC_FRAMES:
+                            if alarm_status == False:
+                                alarm_status = True
+
+                            cv2.putText(im0, "DROWSINESS ALERT!", (10, 30),
+                                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+
+                    else:
+                        COUNTER = 0
+                        alarm_status = False
+
+                    if (distance > YAWN_THRESH):
+                            cv2.putText(im0, "Yawn Alert", (10, 30),
+                                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+                            if alarm_status2 == False and saying == False:
+                                alarm_status2 = True
+                                
+                    else:
+                        alarm_status2 = False
+
+                    cv2.putText(im0, "EAR: {:.2f}".format(ear), (300, 30),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+                    cv2.putText(im0, "YAWN: {:.2f}".format(distance), (300, 60),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+                    
                 # End Alert
+
 
                 # Write results
                 for det_index, (*xyxy, conf, cls) in enumerate(reversed(det[:,:6])):

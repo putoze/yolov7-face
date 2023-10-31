@@ -27,6 +27,12 @@ from alert.drowsiness_yawn import alarm,eye_aspect_ratio,final_ear,lip_distance
 # 6DRepNet
 import utils_with_6D
 
+# YOLO Trt
+import pycuda.autoinit  # This is needed for initializing CUDA driver
+from utils_ten.yolo_classes import get_cls_dict
+from utils_ten.visualization import BBoxVisualization
+from utils_ten.yolo_with_plugins import TrtYOLO
+
 window_name = 'YOLOV7-face'
 
 def detect(opt):
@@ -106,6 +112,15 @@ def detect(opt):
     #     (28.9, -28.9, -24.1)  # Right mouth corner
     # ])
 
+    # YOLO Trt
+    category_num = 4
+    yolo_conf_th = 0.75
+    letter_box = True
+    TrtYOLO_model = '../../weights/darknet/yolov4-tiny-20231011-4cs/yolov4-tiny-custom'
+    cls_dict = get_cls_dict(category_num)
+    vis = BBoxVisualization(cls_dict)
+    trt_yolo = TrtYOLO(TrtYOLO_model, category_num, letter_box)
+    
 
     # Run inference
     if device.type != 'cpu':
@@ -148,18 +163,25 @@ def detect(opt):
             s += '%gx%g ' % img.shape[2:]  # print string
             gn = torch.tensor(im0.shape)[[1, 0, 1, 0]]  # normalization gain whwh
 
-            start = time.time()            
+            start = time.time() 
             if len(det):
                 # Rescale boxes from img_size to im0 size
                 scale_coords(img.shape[2:], det[:, :4], im0.shape, kpt_label=False)
                 scale_coords(img.shape[2:], det[:, 5+num_cs:], im0.shape, kpt_label=kpt_label, step=3)
 
                 # Print results
-                # for c in det[:, 5].unique():
-                #     n = (det[:, 5] == c).sum()  # detections per class
-                #     s += f"{n} {names[int(c)]}{'s' * (n > 1)}, "  # add to string
+                for c in det[:, 5:5+num_cs].unique():
+                    n = (det[:, 5:5+num_cs] == c).sum()  # detections per class
+                    s += f"{n} {names[int(c)]}{'s' * (n > 1)}, "  # add to string
                 
                 # self code
+
+                # YOLO Trt
+                t1_yolo = time_synchronized() 
+                boxes, confs, clss = trt_yolo.detect(im0, yolo_conf_th)
+                t2_yolo = time_synchronized() 
+                # Draw yolo ten
+                im0 = vis.draw_bboxes(im0, boxes, confs, clss)  
 
                 # local parameter 
                 face_max = 0
@@ -312,7 +334,8 @@ def detect(opt):
 
             end = time.time()
             # Print time (inference + NMS)
-            #print(f'{s}Done. ({t2 - t1:.3f}s)')
+            print(f'{s}Done. ({t2 - t1:.3f}s)')
+            print(f'YOLOV4-Tiny inference:({t2_yolo - t1_yolo:.3f}s)')
 
             # Stream results
             if view_img:

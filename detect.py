@@ -48,6 +48,7 @@ def detect(opt):
         imgsz = check_img_size(imgsz, s=stride)  # check img_size
     
     names = model.module.names if hasattr(model, 'module') else model.names  # get class names
+
     if half:
         model.half()  # to FP16
 
@@ -69,6 +70,11 @@ def detect(opt):
     # Run inference
     if device.type != 'cpu':
         model(torch.zeros(1, 3, imgsz, imgsz).to(device).type_as(next(model.parameters())))  # run once
+
+    num_cs = len(names)
+    print('number of class:',num_cs)
+    print(names)
+
     t0 = time.time()
     for path, img, im0s, vid_cap in dataset:
         img = torch.from_numpy(img).to(device)
@@ -80,7 +86,8 @@ def detect(opt):
         # Inference
         t1 = time_synchronized()
         pred = model(img, augment=opt.augment)[0]
-        print(pred[...,4].max())
+        # print(pred[...,4].max())
+
         # Apply NMS
         pred = non_max_suppression(pred, opt.conf_thres, opt.iou_thres, classes=opt.classes, agnostic=opt.agnostic_nms, kpt_label=kpt_label)
         t2 = time_synchronized()
@@ -106,41 +113,45 @@ def detect(opt):
             if len(det):
                 # Rescale boxes from img_size to im0 size
                 scale_coords(img.shape[2:], det[:, :4], im0.shape, kpt_label=False)
-                scale_coords(img.shape[2:], det[:, 6:], im0.shape, kpt_label=kpt_label, step=3)
+                scale_coords(img.shape[2:], det[:, 5+num_cs:], im0.shape, kpt_label=kpt_label, step=3)
 
                 # Print results
-                for c in det[:, 5].unique():
-                    n = (det[:, 5] == c).sum()  # detections per class
+                for c in det[:, 5:5+num_cs].unique():
+                    n = (det[:, 5:5+num_cs] == c).sum()  # detections per class
                     s += f"{n} {names[int(c)]}{'s' * (n > 1)}, "  # add to string
                 
-
-                # self code
+                # local parameter 
                 face_max = 0
                 steps = 3
                 driver_face_roi = []
-                coordinate = [0 for kid in range(kpt_label)]
+                driver_kpts = []
+                coordinate = [(0,0) for kid in range(kpt_label)]
+
                 # find driver face
-                for det_index, (*xyxy, conf, cls) in enumerate(reversed(det[:,:6])):
-                    kpts = det[det_index, 6:]
+                for det_index, (*xyxy, conf, cls) in enumerate(reversed(det[:,:5+num_cs])):
+                    kpts = det[det_index, 5+num_cs:]
                     if names[int(cls)] == 'face':
                         bb = [int(x) for x in xyxy]
                         face_area = (bb[2] - bb[0])*(bb[3]-bb[1])
-                        if(face_area > face_max) :
+                        if face_area > face_max :
                             face_max = face_area
                             driver_face_roi = bb
-                            # landmark points
-                            for kid in range(kpt_label):
-                                x_coord, y_coord = kpts[steps * kid], kpts[steps * kid + 1]
-                                if not (x_coord % 640 == 0 or y_coord % 640 == 0):
-                                    coordinate[kid] = (int(x_coord),int(y_coord))
-                                else :
-                                    coordinate[kid] = 0
+                            driver_kpts = kpts
 
                 if len(driver_face_roi) == 0:
                     break
 
+                if len(driver_kpts) == 0:
+                    break
+
+                # landmark points
+                for kid in range(kpt_label):
+                    x_coord, y_coord = driver_kpts[steps * kid], driver_kpts[steps * kid + 1]
+                    if not (x_coord % 640 == 0 or y_coord % 640 == 0):
+                        coordinate[kid] = (int(x_coord),int(y_coord))
+
                 # Write results
-                for det_index, (*xyxy, conf, cls) in enumerate(reversed(det[:,:6])):
+                for det_index, (*xyxy, conf, cls) in enumerate(reversed(det[:,:5+num_cs])):
                     if save_txt:  # Write to file
                         xywh = (xyxy2xywh(torch.tensor(xyxy).view(1, 4)) / gn).view(-1).tolist()  # normalized xywh
                         line = (cls, *xywh, conf) if opt.save_conf else (cls, *xywh)  # label format
@@ -150,7 +161,8 @@ def detect(opt):
                     if save_img or opt.save_crop or view_img:  # Add bbox to image
                         c = int(cls)  # integer class
                         label = None if opt.hide_labels else (names[c] if opt.hide_conf else f'{names[c]} {conf:.2f}')
-                        kpts = det[det_index, 6:]
+                        print(label)
+                        kpts = det[det_index, 5+num_cs:]
                         plot_one_box(xyxy, im0, label=label, color=colors(c, True), line_thickness=opt.line_thickness, kpt_label=kpt_label, kpts=kpts, steps=3, orig_shape=im0.shape[:2])
                         if opt.save_crop:
                             save_one_box(xyxy, im0s, file=save_dir / 'crops' / names[c] / f'{p.stem}.jpg', BGR=True)
@@ -165,7 +177,7 @@ def detect(opt):
 
             end = time.time()
             # Print time (inference + NMS)
-            #print(f'{s}Done. ({t2 - t1:.3f}s)')
+            print(f'{s}Done. ({t2 - t1:.3f}s)')
 
             # Stream results
             if view_img:

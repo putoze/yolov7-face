@@ -62,6 +62,10 @@ echo [11]: yolov7-lite-t-Mouth+own+mirrir-36lmk-2200epochs.pt
 echo ----------------
 echo [12]: yolov7-lite-t-Mouth+own+mirrir-34lmk-2200epochs.pt
 echo ----------------
+echo [13]: yolov7-lite-t-Mouth+own+mirrir-36lmk-5cs-1200epochs.pt
+echo ----------------
+echo [14]: yolov7-lite-t-Mouth+own+mirrir-revise-noflip-34lmk-2200epochs.pt
+echo ----------------
 echo [n]: None
 echo -n "Press enter to start it:"
 
@@ -106,6 +110,12 @@ fi
 if [ $MY_Weights -eq 12 ] ; then
     Weights='yolov7-lite-t-Mouth+own+mirrir-34lmk-2200epochs/best.pt'
 fi
+if [ $MY_Weights -eq 13 ] ; then
+    Weights='yolov7-lite-t-Mouth+own+mirrir-36lmk-5cs-1200epochs/best.pt'
+fi
+if [ $MY_Weights -eq 14 ] ; then
+    Weights='yolov7-lite-t-Mouth+own+mirrir-revise-noflip-34lmk-2200epochs/best.pt'
+fi
 echo $Weights
 
 #============================================================================ 
@@ -131,6 +141,16 @@ echo [7]: otocam detect_6D
 echo ----------------
 echo [8]: otocam detect_pnp
 echo ----------------
+echo [9]: Video detect_pnp
+echo ----------------
+echo [10]: otocam detect_pnp_trt
+echo ----------------
+echo [11]: Video detect_pnp_trt
+echo ----------------
+echo [12]: otocam detect_pnp_trt_6D
+echo ----------------
+echo [13]: Video detect_pnp_trt_6D
+echo ----------------
 echo -n "Press enter to start it:"
 
 read MY_mode
@@ -146,8 +166,8 @@ if [ $MY_mode -eq 0 ] ; then
     --weight ../../weights/yolov7-face/$Weights \
     --conf-thres 0.2 \
     --iou-thres 0.5 \
-    --source cam.txt \
-    --kpt-label 34 \
+    --source 8 \
+    --kpt-label 36 \
     --project ../yolov7-face-runs/cam/
 
 fi
@@ -160,7 +180,7 @@ if [ $MY_mode -eq 1 ] ; then
 
     python3 detect.py \
     --weights ../../weights/yolov7-face/$Weights \
-    --source /home/joe/Desktop/Camera_oToCAM250/2023_0816_otocam_datavideo/output29.avi \
+    --source /media/joe/Xavierssd/2023_0816_otocam_datavideo/output29.avi \
     --conf-thres 0.2 \
     --iou-thres 0.5 \
     --kpt-label 36 \
@@ -281,6 +301,93 @@ if [ $MY_mode -eq 8 ] ; then
     --source 8 \
     --kpt-label 34 \
     --project ../yolov7-face-runs/cam/
+
+fi
+
+#============================================================================ 
+
+if [ $MY_mode -eq 9 ] ; then
+    echo ============
+    echo 「Video  detect_pnp」
+    echo ============
+
+    python detect_pnp.py \
+    --weight ../../weights/yolov7-face/$Weights \
+    --conf-thres 0.2 \
+    --iou-thres 0.5 \
+    --source /media/joe/Xavierssd/2023_0816_otocam_datavideo/output29.avi \
+    --kpt-label 34 \
+    --project ../yolov7-face-runs/video/
+
+fi
+
+#============================================================================ 
+
+if [ $MY_mode -eq 10 ] ; then
+    echo ============
+    echo 「otocam  detect_pnp_trt」
+    echo ============
+
+    python detect_pnp_trt.py \
+    --weight ../../weights/yolov7-face/$Weights \
+    --conf-thres 0.2 \
+    --iou-thres 0.5 \
+    --source 8 \
+    --kpt-label 34 \
+    --project ../yolov7-face-runs/cam/
+
+fi
+
+#============================================================================ 
+
+if [ $MY_mode -eq 11 ] ; then
+    echo ============
+    echo 「Video  detect_pnp_trt」
+    echo ============
+
+    python detect_pnp_trt.py \
+    --weight ../../weights/yolov7-face/$Weights \
+    --conf-thres 0.2 \
+    --iou-thres 0.5 \
+    --source /media/joe/Xavierssd/2023_0816_otocam_datavideo/output29.avi \
+    --kpt-label 34 \
+    --project ../yolov7-face-runs/video/ \
+    --view-img
+
+fi
+
+#============================================================================ 
+
+if [ $MY_mode -eq 12 ] ; then
+    echo ============
+    echo 「otocam  detect_pnp_trt」
+    echo ============
+
+    python detect_pnp_trt_6D.py \
+    --weight ../../weights/yolov7-face/$Weights \
+    --conf-thres 0.2 \
+    --iou-thres 0.5 \
+    --source 8 \
+    --kpt-label 34 \
+    --project ../yolov7-face-runs/cam/
+
+fi
+
+#============================================================================ 
+
+if [ $MY_mode -eq 13 ] ; then
+    echo ============
+    echo 「Video  detect_pnp_trt」
+    echo ============
+
+    python detect_pnp_trt_6D.py \
+    --weight ../../weights/yolov7-face/$Weights \
+    --conf-thres 0.2 \
+    --iou-thres 0.5 \
+    --source /media/joe/Xavierssd/2023_0816_otocam_datavideo/output30.avi \
+    --kpt-label 34 \
+    --project ../yolov7-face-runs/video/ \
+    --view-img
 
 fi
 

@@ -24,8 +24,25 @@ import time
 from threading import Thread
 from alert.drowsiness_yawn import alarm,eye_aspect_ratio,final_ear,lip_distance
 
-# 6DRepNet
+## 6D RepNet golbal
+import numpy as np
+from PIL import Image
+from torchvision import transforms
+from numpy.lib.function_base import _quantile_unchecked
+from matplotlib import pyplot as plt
+import matplotlib
+
+## 6D RepNet local
+os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
+from model_6DRepNet import SixDRepNet
 import utils_with_6D
+matplotlib.use('TkAgg')
+
+# YOLO Trt
+import pycuda.autoinit  # This is needed for initializing CUDA driver
+from utils_ten.yolo_classes import get_cls_dict
+from utils_ten.visualization import BBoxVisualization
+from utils_ten.yolo_with_plugins import TrtYOLO
 
 window_name = 'YOLOV7-face'
 
@@ -106,7 +123,36 @@ def detect(opt):
     #     (28.9, -28.9, -24.1)  # Right mouth corner
     # ])
 
+    # YOLO Trt
+    category_num = 4
+    yolo_conf_th = 0.75
+    letter_box = True
+    TrtYOLO_model = '../../weights/darknet/yolov4-tiny-20231011-4cs/yolov4-tiny-custom'
+    cls_dict = get_cls_dict(category_num)
+    vis = BBoxVisualization(cls_dict)
+    trt_yolo = TrtYOLO(TrtYOLO_model, category_num, letter_box)
 
+    # 6D_Repnet
+    transformations_6D = transforms.Compose([transforms.Resize(224),
+                                      transforms.CenterCrop(224),
+                                      transforms.ToTensor(),
+                                      transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
+    snapshot_path_6D = '../../weights/6DRepNet/6DRepNet_300W_LP_AFLW2000.pth'
+    model_6DRepNet = SixDRepNet(backbone_name='RepVGG-B1g2',
+                       backbone_file='',
+                       deploy=True,
+                       pretrained=False)
+
+    saved_state_dict = torch.load(os.path.join(
+        snapshot_path_6D), map_location='cpu')
+
+    if 'model_state_dict' in saved_state_dict:
+        model_6DRepNet.load_state_dict(saved_state_dict['model_state_dict'])
+    else:
+        model_6DRepNet.load_state_dict(saved_state_dict)
+    model_6DRepNet.to(device)
+    # End 6D_Repnet
+    
     # Run inference
     if device.type != 'cpu':
         model(torch.zeros(1, 3, imgsz, imgsz).to(device).type_as(next(model.parameters())))  # run once
@@ -148,18 +194,25 @@ def detect(opt):
             s += '%gx%g ' % img.shape[2:]  # print string
             gn = torch.tensor(im0.shape)[[1, 0, 1, 0]]  # normalization gain whwh
 
-            start = time.time()            
+            start = time.time() 
             if len(det):
                 # Rescale boxes from img_size to im0 size
                 scale_coords(img.shape[2:], det[:, :4], im0.shape, kpt_label=False)
                 scale_coords(img.shape[2:], det[:, 5+num_cs:], im0.shape, kpt_label=kpt_label, step=3)
 
                 # Print results
-                # for c in det[:, 5].unique():
-                #     n = (det[:, 5] == c).sum()  # detections per class
-                #     s += f"{n} {names[int(c)]}{'s' * (n > 1)}, "  # add to string
+                for c in det[:, 5:5+num_cs].unique():
+                    n = (det[:, 5:5+num_cs] == c).sum()  # detections per class
+                    s += f"{n} {names[int(c)]}{'s' * (n > 1)}, "  # add to string
                 
                 # self code
+
+                # YOLO Trt
+                t1_yolo = time_synchronized() 
+                boxes, confs, clss = trt_yolo.detect(im0, yolo_conf_th)
+                t2_yolo = time_synchronized() 
+                # Draw yolo ten
+                im0 = vis.draw_bboxes(im0, boxes, confs, clss)  
 
                 # local parameter 
                 face_max = 0
@@ -168,6 +221,9 @@ def detect(opt):
                 driver_face_roi = []
                 driver_kpts = []
                 coordinate = [(0,0) for kid in range(kpt_label)]
+                show_text = 1
+                base_txt_height = 35
+                gap_txt_height = 35
 
                 # find driver face
                 for det_index, (*xyxy, conf, cls) in enumerate(reversed(det[:,:5+num_cs])):
@@ -226,17 +282,20 @@ def detect(opt):
 
                 rvec_matrix = cv2.Rodrigues(rotation_vector)[0]
                 proj_matrix = np.hstack((rvec_matrix, translation_vector))
-                eulerAngles = -cv2.decomposeProjectionMatrix(proj_matrix)[6]
+                eulerAngles = cv2.decomposeProjectionMatrix(proj_matrix)[6]
 
-                yaw   = -eulerAngles[1]
-                pitch = -eulerAngles[0]
-                roll  = -eulerAngles[2]
+                yaw   =  eulerAngles[1]
+                if eulerAngles[0] > 0:
+                    pitch =  180 - eulerAngles[0]
+                else :
+                    pitch =  -(180 + eulerAngles[0])
+                roll  =  eulerAngles[2]
 
                 tdx = size[1] - 70
-                tdy = 70
+                tdy = 70 * 2
 
                 utils_with_6D.draw_axis(im0,yaw,pitch,roll,tdx,tdy, size = 50)
-                utils_with_6D.draw_gaze_6D(nose_point,im0,yaw,pitch,color=(0,0,255))
+                utils_with_6D.draw_gaze_6D(nose_point,im0,yaw,pitch,color=(0,255,255))
 
                 # Alert
                 if alert_flag:
@@ -256,28 +315,28 @@ def detect(opt):
                     lip = coordinate_np[13:25]
                     cv2.drawContours(im0, [lip], -1, (0, 255, 0), 1)
 
-                    if ear < EYE_AR_THRESH:
-                        COUNTER += 1
+                    # if ear < EYE_AR_THRESH:
+                    #     COUNTER += 1
 
-                        if COUNTER >= EYE_AR_CONSEC_FRAMES:
-                            if alarm_status == False:
-                                alarm_status = True
+                    #     if COUNTER >= EYE_AR_CONSEC_FRAMES:
+                    #         if alarm_status == False:
+                    #             alarm_status = True
 
-                            cv2.putText(im0, "DROWSINESS ALERT!", (10, 30),
-                                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+                    #         cv2.putText(im0, "DROWSINESS ALERT!", (10, 30),
+                    #                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
 
-                    else:
-                        COUNTER = 0
-                        alarm_status = False
+                    # else:
+                    #     COUNTER = 0
+                    #     alarm_status = False
 
-                    if (distance > YAWN_THRESH):
-                            cv2.putText(im0, "Yawn Alert", (10, 30),
-                                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
-                            if alarm_status2 == False and saying == False:
-                                alarm_status2 = True
+                    # if (distance > YAWN_THRESH):
+                    #         cv2.putText(im0, "Yawn Alert", (10, 30),
+                    #                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+                    #         if alarm_status2 == False and saying == False:
+                    #             alarm_status2 = True
                                 
-                    else:
-                        alarm_status2 = False
+                    # else:
+                    #     alarm_status2 = False
 
                     cv2.putText(im0, "EAR: {:.2f}".format(ear), (300, 30),
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
@@ -285,6 +344,77 @@ def detect(opt):
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
                     
                 # End Alert
+
+                # 6DRepNet
+                x_min,y_min,x_max,y_max = driver_face_roi
+                bbox_width = abs(x_max - x_min)
+                bbox_height = abs(y_max - y_min)
+
+                x_min = max(0, x_min-int(0.2*bbox_height))
+                y_min = max(0, y_min-int(0.2*bbox_width))
+                x_max = x_max+int(0.2*bbox_height)
+                y_max = y_max+int(0.2*bbox_width)
+
+                img = im0[y_min:y_max, x_min:x_max]
+                img = Image.fromarray(img)
+                img = img.convert('RGB')
+                img = transformations_6D(img)
+
+                img = torch.Tensor(img[None, :]).to(device)
+
+                R_pred = model_6DRepNet(img)
+
+                euler = utils_with_6D.compute_euler_angles_from_rotation_matrices(
+                    R_pred)*180/np.pi
+                
+                p_pred_deg = euler[:, 0].cpu()
+                y_pred_deg = euler[:, 1].cpu()
+                r_pred_deg = euler[:, 2].cpu()
+
+                # utils_with_6D.plot_pose_cube(im0,  y_pred_deg, p_pred_deg, r_pred_deg, x_min + int(.5*(
+                #     x_max-x_min)), y_min + int(.5*(y_max-y_min)), size=bbox_width)
+                height, width = im0.shape[:2]
+                tdx = width - 70
+                tdy = 70
+                utils_with_6D.draw_axis(im0,y_pred_deg,p_pred_deg,r_pred_deg,tdx,tdy, size = 50)
+                utils_with_6D.draw_gaze_6D(nose_point,im0,y_pred_deg,p_pred_deg,color=(255,255,0))
+
+                # End 6DRepNet
+
+                if show_text:
+                    p_pred_str = str(round(p_pred_deg[0].item(), 3))
+                    y_pred_str = str(-(round(y_pred_deg[0].item(), 3)))
+                    r_pred_str = str(round(r_pred_deg[0].item(), 3))
+                    #(img, text, org, fontFace, fontScale, color, thickness, lineType)
+                    next_txt_height = base_txt_height
+                    cv2.putText(im0,"HEAD-POSE 6D",(0,next_txt_height), 
+                                cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 0), 2)
+                    next_txt_height += gap_txt_height
+                    cv2.putText(im0,"roll:"+r_pred_str,(0,next_txt_height), 
+                                cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
+                    next_txt_height += gap_txt_height
+                    cv2.putText(im0,"yaw:"+y_pred_str,(0,next_txt_height), 
+                                cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+                    next_txt_height += gap_txt_height
+                    cv2.putText(im0,"pitch:"+p_pred_str,(0,next_txt_height), 
+                                cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+                    
+                    pitch_str = str(round(pitch.item(), 3))
+                    yaw_str = str(-(round(yaw.item(), 3)))
+                    roll_str = str(round(roll.item(), 3))
+                    #(img, text, org, fontFace, fontScale, color, thickness, lineType)
+                    next_txt_height += gap_txt_height
+                    cv2.putText(im0,"HEAD-POSE PNP",(0,next_txt_height), 
+                                cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
+                    next_txt_height += gap_txt_height
+                    cv2.putText(im0,"roll:"+roll_str,(0,next_txt_height), 
+                                cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
+                    next_txt_height += gap_txt_height
+                    cv2.putText(im0,"yaw:"+yaw_str,(0,next_txt_height), 
+                                cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+                    next_txt_height += gap_txt_height
+                    cv2.putText(im0,"pitch:"+pitch_str,(0,next_txt_height), 
+                                cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
 
                 # Write results
                 for det_index, (*xyxy, conf, cls) in enumerate(reversed(det[:,:5+num_cs])):
@@ -312,7 +442,8 @@ def detect(opt):
 
             end = time.time()
             # Print time (inference + NMS)
-            #print(f'{s}Done. ({t2 - t1:.3f}s)')
+            print(f'{s}Done. ({t2 - t1:.3f}s)')
+            print(f'YOLOV4-Tiny inference:({t2_yolo - t1_yolo:.3f}s)')
 
             # Stream results
             if view_img:
@@ -329,6 +460,8 @@ def detect(opt):
                     print("")
                     cv2.destroyAllWindows()
                     return 0
+                elif key == ord('T') or key == ord('t'):  # Toggle fullscreen
+                    show_text = not show_text
 
             # Save results (image with detections)
             if save_img:

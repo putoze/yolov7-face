@@ -166,7 +166,7 @@ if [ $MY_mode -eq 0 ] ; then
     --weight ../../weights/yolov7-face/$Weights \
     --conf-thres 0.2 \
     --iou-thres 0.5 \
-    --source 8 \
+    --source cam.txt \
     --kpt-label 36 \
     --project ../yolov7-face-runs/cam/
 

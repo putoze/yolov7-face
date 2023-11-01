@@ -111,6 +111,7 @@ def detect(opt):
 
             start = time.time()            
             if len(det):
+                print(det.shape)
                 # Rescale boxes from img_size to im0 size
                 scale_coords(img.shape[2:], det[:, :4], im0.shape, kpt_label=False)
                 scale_coords(img.shape[2:], det[:, 5+num_cs:], im0.shape, kpt_label=kpt_label, step=3)

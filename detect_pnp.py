@@ -226,12 +226,15 @@ def detect(opt):
 
                 rvec_matrix = cv2.Rodrigues(rotation_vector)[0]
                 proj_matrix = np.hstack((rvec_matrix, translation_vector))
-                eulerAngles = -cv2.decomposeProjectionMatrix(proj_matrix)[6]
+                eulerAngles = cv2.decomposeProjectionMatrix(proj_matrix)[6]
 
-                yaw   = -eulerAngles[1]
-                pitch = -eulerAngles[0]
-                roll  = -eulerAngles[2]
-
+                yaw   =  eulerAngles[1]
+                if eulerAngles[0] > 0:
+                    pitch =  180 - eulerAngles[0]
+                else :
+                    pitch =  -(180 + eulerAngles[0])
+                roll  =  eulerAngles[2]
+                
                 tdx = size[1] - 70
                 tdy = 70
 

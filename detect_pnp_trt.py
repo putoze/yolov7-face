@@ -120,6 +120,10 @@ def detect(opt):
     cls_dict = get_cls_dict(category_num)
     vis = BBoxVisualization(cls_dict)
     trt_yolo = TrtYOLO(TrtYOLO_model, category_num, letter_box)
+
+    # Text show
+    base_txt_height = 35
+    gap_txt_height = 35
     
 
     # Run inference
@@ -189,6 +193,7 @@ def detect(opt):
                 steps = 3
                 driver_face_roi = []
                 driver_kpts = []
+                show_text = 1
                 coordinate = [(0,0) for kid in range(kpt_label)]
 
                 # find driver face
@@ -217,11 +222,18 @@ def detect(opt):
                     else :
                         alert_flag = 0
                 
-                if len(coordinate[12]) == 1:
-                    nose_point = ((driver_face_roi[0]+driver_face_roi[2])/2,
-                                  (driver_face_roi[1]+driver_face_roi[3])/2)
-                else :
-                    nose_point = coordinate[12]
+                if kpt_label == 34:
+                    if len(coordinate[12]) == 1:
+                        nose_point = ((driver_face_roi[0]+driver_face_roi[2])/2,
+                                    (driver_face_roi[1]+driver_face_roi[3])/2)
+                    else :
+                        nose_point = coordinate[12]
+                elif kpt_label == 36:
+                    if len(coordinate[14]) == 1:
+                        nose_point = ((driver_face_roi[0]+driver_face_roi[2])/2,
+                                    (driver_face_roi[1]+driver_face_roi[3])/2)
+                    else :
+                        nose_point = coordinate[14]
 
                 # headpose
                 size = im0.shape[:2]
@@ -237,12 +249,20 @@ def detect(opt):
                                 
                 dist_coeffs = np.zeros((4,1)) # Assuming no lens distortion
                 # points_2D_list = [12,33,0,9,13,19]
-                image_points = np.array([coordinate[12],
-                                         coordinate[33],
-                                         coordinate[0],
-                                         coordinate[9],
-                                         coordinate[13],
-                                         coordinate[19]], dtype="double")
+                if kpt_label == 34:
+                    image_points = np.array([coordinate[12],
+                                            coordinate[33],
+                                            coordinate[0],
+                                            coordinate[9],
+                                            coordinate[13],
+                                            coordinate[19]], dtype="double")
+                elif kpt_label == 36:
+                    image_points = np.array([coordinate[14],
+                                            coordinate[35],
+                                            coordinate[0],
+                                            coordinate[10],
+                                            coordinate[15],
+                                            coordinate[21]], dtype="double")
 
                 (success, rotation_vector, translation_vector) = cv2.solvePnP(model_points, image_points, camera_matrix, dist_coeffs, flags=cv2.SOLVEPNP_ITERATIVE)
 
@@ -258,7 +278,7 @@ def detect(opt):
                 roll  =  eulerAngles[2]
                 
                 tdx = size[1] - 70
-                tdy = 70
+                tdy = 70*2
 
                 utils_with_6D.draw_axis(im0,yaw,pitch,roll,tdx,tdy, size = 50)
                 utils_with_6D.draw_gaze_6D(nose_point,im0,yaw,pitch,color=(0,0,255))
@@ -266,43 +286,49 @@ def detect(opt):
                 # Alert
                 if alert_flag:
                     coordinate_np = np.array(coordinate)
-                    leftEye = coordinate_np[0:6]
-                    rightEye = coordinate_np[6:12]
-                    # print('leftEye',leftEye,type(leftEye),leftEye.shape)
-                    # print('rightEye',rightEye)
-                    ear = final_ear(leftEye,rightEye)
-                    distance = lip_distance(coordinate_np[13:33])
+                    if kpt_label == 34:
+                        leftEye = coordinate_np[0:6]
+                        rightEye = coordinate_np[6:12]
+                        distance = lip_distance(coordinate_np[13:33])
+                        lip = coordinate_np[13:25]
+                    elif kpt_label == 36:
+                        leftEye = coordinate_np[0:6]
+                        rightEye = coordinate_np[7:13]
+                        distance = lip_distance(coordinate_np[15:35])
+                        lip = coordinate_np[15:27]
 
+                    # EAR
+                    ear = final_ear(leftEye,rightEye)
+
+                    # draw
                     leftEyeHull = cv2.convexHull(leftEye)
                     rightEyeHull = cv2.convexHull(rightEye)
                     cv2.drawContours(im0, [leftEyeHull], -1, (0, 255, 0), 1)
                     cv2.drawContours(im0, [rightEyeHull], -1, (0, 255, 0), 1)
-
-                    lip = coordinate_np[13:25]
                     cv2.drawContours(im0, [lip], -1, (0, 255, 0), 1)
 
-                    if ear < EYE_AR_THRESH:
-                        COUNTER += 1
+                    # if ear < EYE_AR_THRESH:
+                    #     COUNTER += 1
 
-                        if COUNTER >= EYE_AR_CONSEC_FRAMES:
-                            if alarm_status == False:
-                                alarm_status = True
+                    #     if COUNTER >= EYE_AR_CONSEC_FRAMES:
+                    #         if alarm_status == False:
+                    #             alarm_status = True
 
-                            cv2.putText(im0, "DROWSINESS ALERT!", (10, 30),
-                                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+                    #         cv2.putText(im0, "DROWSINESS ALERT!", (10, 30),
+                    #                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
 
-                    else:
-                        COUNTER = 0
-                        alarm_status = False
+                    # else:
+                    #     COUNTER = 0
+                    #     alarm_status = False
 
-                    if (distance > YAWN_THRESH):
-                            cv2.putText(im0, "Yawn Alert", (10, 30),
-                                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
-                            if alarm_status2 == False and saying == False:
-                                alarm_status2 = True
+                    # if (distance > YAWN_THRESH):
+                    #         cv2.putText(im0, "Yawn Alert", (10, 30),
+                    #                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+                    #         if alarm_status2 == False and saying == False:
+                    #             alarm_status2 = True
                                 
-                    else:
-                        alarm_status2 = False
+                    # else:
+                    #     alarm_status2 = False
 
                     cv2.putText(im0, "EAR: {:.2f}".format(ear), (300, 30),
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
@@ -310,6 +336,24 @@ def detect(opt):
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
                     
                 # End Alert
+
+                if show_text:
+                    pitch_str = str(round(pitch.item(), 3))
+                    yaw_str = str(-(round(yaw.item(), 3)))
+                    roll_str = str(round(roll.item(), 3))
+                    #(img, text, org, fontFace, fontScale, color, thickness, lineType)
+                    next_txt_height = base_txt_height
+                    cv2.putText(im0,"HEAD-POSE PNP",(0,next_txt_height), 
+                                cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
+                    next_txt_height += gap_txt_height
+                    cv2.putText(im0,"roll:"+roll_str,(0,next_txt_height), 
+                                cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
+                    next_txt_height += gap_txt_height
+                    cv2.putText(im0,"yaw:"+yaw_str,(0,next_txt_height), 
+                                cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+                    next_txt_height += gap_txt_height
+                    cv2.putText(im0,"pitch:"+pitch_str,(0,next_txt_height), 
+                                cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
 
                 # Write results
                 for det_index, (*xyxy, conf, cls) in enumerate(reversed(det[:,:5+num_cs])):
@@ -355,6 +399,9 @@ def detect(opt):
                     print("")
                     cv2.destroyAllWindows()
                     return 0
+                
+                elif key == ord('T') or key == ord('t'):  # Toggle fullscreen
+                    show_text = not show_text
 
             # Save results (image with detections)
             if save_img:

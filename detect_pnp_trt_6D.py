@@ -152,6 +152,10 @@ def detect(opt):
         model_6DRepNet.load_state_dict(saved_state_dict)
     model_6DRepNet.to(device)
     # End 6D_Repnet
+
+    # Text show
+    base_txt_height = 35
+    gap_txt_height = 35
     
     # Run inference
     if device.type != 'cpu':
@@ -222,8 +226,6 @@ def detect(opt):
                 driver_kpts = []
                 coordinate = [(0,0) for kid in range(kpt_label)]
                 show_text = 1
-                base_txt_height = 35
-                gap_txt_height = 35
 
                 # find driver face
                 for det_index, (*xyxy, conf, cls) in enumerate(reversed(det[:,:5+num_cs])):
@@ -251,11 +253,18 @@ def detect(opt):
                     else :
                         alert_flag = 0
                 
-                if len(coordinate[12]) == 1:
-                    nose_point = ((driver_face_roi[0]+driver_face_roi[2])/2,
-                                  (driver_face_roi[1]+driver_face_roi[3])/2)
-                else :
-                    nose_point = coordinate[12]
+                if kpt_label == 34:
+                    if len(coordinate[12]) == 1:
+                        nose_point = ((driver_face_roi[0]+driver_face_roi[2])/2,
+                                    (driver_face_roi[1]+driver_face_roi[3])/2)
+                    else :
+                        nose_point = coordinate[12]
+                elif kpt_label == 36:
+                    if len(coordinate[14]) == 1:
+                        nose_point = ((driver_face_roi[0]+driver_face_roi[2])/2,
+                                    (driver_face_roi[1]+driver_face_roi[3])/2)
+                    else :
+                        nose_point = coordinate[14]
 
                 # headpose
                 size = im0.shape[:2]
@@ -271,12 +280,20 @@ def detect(opt):
                                 
                 dist_coeffs = np.zeros((4,1)) # Assuming no lens distortion
                 # points_2D_list = [12,33,0,9,13,19]
-                image_points = np.array([coordinate[12],
-                                         coordinate[33],
-                                         coordinate[0],
-                                         coordinate[9],
-                                         coordinate[13],
-                                         coordinate[19]], dtype="double")
+                if kpt_label == 34:
+                    image_points = np.array([coordinate[12],
+                                            coordinate[33],
+                                            coordinate[0],
+                                            coordinate[9],
+                                            coordinate[13],
+                                            coordinate[19]], dtype="double")
+                elif kpt_label == 36:
+                    image_points = np.array([coordinate[14],
+                                            coordinate[35],
+                                            coordinate[0],
+                                            coordinate[10],
+                                            coordinate[15],
+                                            coordinate[21]], dtype="double")
 
                 (success, rotation_vector, translation_vector) = cv2.solvePnP(model_points, image_points, camera_matrix, dist_coeffs, flags=cv2.SOLVEPNP_ITERATIVE)
 
@@ -290,29 +307,35 @@ def detect(opt):
                 else :
                     pitch =  -(180 + eulerAngles[0])
                 roll  =  eulerAngles[2]
-
+                
                 tdx = size[1] - 70
-                tdy = 70 * 2
+                tdy = 70*2
 
                 utils_with_6D.draw_axis(im0,yaw,pitch,roll,tdx,tdy, size = 50)
-                utils_with_6D.draw_gaze_6D(nose_point,im0,yaw,pitch,color=(0,255,255))
+                utils_with_6D.draw_gaze_6D(nose_point,im0,yaw,pitch,color=(0,0,255))
 
                 # Alert
                 if alert_flag:
                     coordinate_np = np.array(coordinate)
-                    leftEye = coordinate_np[0:6]
-                    rightEye = coordinate_np[6:12]
-                    # print('leftEye',leftEye,type(leftEye),leftEye.shape)
-                    # print('rightEye',rightEye)
-                    ear = final_ear(leftEye,rightEye)
-                    distance = lip_distance(coordinate_np[13:33])
+                    if kpt_label == 34:
+                        leftEye = coordinate_np[0:6]
+                        rightEye = coordinate_np[6:12]
+                        distance = lip_distance(coordinate_np[13:33])
+                        lip = coordinate_np[13:25]
+                    elif kpt_label == 36:
+                        leftEye = coordinate_np[0:6]
+                        rightEye = coordinate_np[7:13]
+                        distance = lip_distance(coordinate_np[15:35])
+                        lip = coordinate_np[15:27]
 
+                    # EAR
+                    ear = final_ear(leftEye,rightEye)
+
+                    # draw
                     leftEyeHull = cv2.convexHull(leftEye)
                     rightEyeHull = cv2.convexHull(rightEye)
                     cv2.drawContours(im0, [leftEyeHull], -1, (0, 255, 0), 1)
                     cv2.drawContours(im0, [rightEyeHull], -1, (0, 255, 0), 1)
-
-                    lip = coordinate_np[13:25]
                     cv2.drawContours(im0, [lip], -1, (0, 255, 0), 1)
 
                     # if ear < EYE_AR_THRESH:
@@ -431,7 +454,6 @@ def detect(opt):
                         plot_one_box(xyxy, im0, label=label, color=colors(c, True), line_thickness=opt.line_thickness, kpt_label=kpt_label, kpts=kpts, steps=3, orig_shape=im0.shape[:2])
                         if opt.save_crop:
                             save_one_box(xyxy, im0s, file=save_dir / 'crops' / names[c] / f'{p.stem}.jpg', BGR=True)
-
 
                 if save_txt_tidl:  # Write to file in tidl dump format
                     for *xyxy, conf, cls in det_tidl:

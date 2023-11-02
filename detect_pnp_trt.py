@@ -114,7 +114,7 @@ def detect(opt):
 
     # YOLO Trt
     category_num = 4
-    yolo_conf_th = 0.75
+    yolo_conf_th = 0.6
     letter_box = True
     TrtYOLO_model = '../../weights/darknet/yolov4-tiny-20231011-4cs/yolov4-tiny-custom'
     cls_dict = get_cls_dict(category_num)
@@ -124,6 +124,19 @@ def detect(opt):
     # Text show
     base_txt_height = 35
     gap_txt_height = 35
+
+    # frame counter
+    frame_cnt = 0
+
+    # seatbelt
+    seatbelt_cnt = 0
+    max_seatbelt_cnt = 20
+    seatbelt_flag = 0
+
+    # phone
+    phone_cnt = 0
+    max_phone_cnt = 20
+    phone_flag = 0
     
 
     # Run inference
@@ -337,6 +350,71 @@ def detect(opt):
                     
                 # End Alert
 
+                
+                for bb, cf, cl in zip(boxes, confs, clss): 
+                    if cl == 2:
+                        seatbelt_cnt += 1
+                    elif cl == 3:
+                        phone_cnt += 1
+
+
+                # seatbelt
+                if frame_cnt % max_seatbelt_cnt == 0:
+                    if seatbelt_cnt >= max_seatbelt_cnt * 0.5:
+                        seatbelt_flag = 1
+                    else:
+                        seatbelt_flag = 0
+
+                    if phone_cnt >= max_phone_cnt * 0.5:
+                        phone_flag = 1
+                    else:
+                        phone_flag = 0
+                    
+                    seatbelt_cnt = 0
+                    phone_cnt = 0
+
+                # update frame_cnt
+                frame_cnt += 1
+
+                # ICON
+                icon_w = 75
+                icon_h = 75
+                back_size = 25
+                num_icon = 4
+
+                icon_drowsiness= cv2.imread("./icon/drowsiness.png")
+                icon_drowsiness_re = cv2.resize(icon_drowsiness,(icon_w,icon_h))
+                icon_phone = cv2.imread("./icon/phone.png")
+                icon_phone_re = cv2.resize(icon_phone,(icon_w,icon_h))
+                icon_attentive = cv2.imread("./icon/attentive.png")
+                icon_attentive_re = cv2.resize(icon_attentive,(icon_w,icon_h))
+                icon_seatbelt = cv2.imread("./icon/seatbelt.png")
+                icon_seatbelt_re = cv2.resize(icon_seatbelt,(icon_w,icon_h))
+
+                icon_loc_x = 600
+                next_icon_loc_x = icon_loc_x + icon_w
+                im0[back_size:icon_h+back_size, icon_loc_x:next_icon_loc_x]  = icon_drowsiness_re
+
+                icon_loc_x = next_icon_loc_x + back_size
+                next_icon_loc_x = icon_loc_x + icon_w
+                if phone_flag == 1:
+                    icon_phone_re[:,:,2] = 255
+                    im0[back_size:icon_h+back_size, icon_loc_x:next_icon_loc_x]  = icon_phone_re
+                else:
+                    im0[back_size:icon_h+back_size, icon_loc_x:next_icon_loc_x]  = icon_phone_re
+
+                icon_loc_x = next_icon_loc_x + back_size
+                next_icon_loc_x = icon_loc_x + icon_w
+                im0[back_size:icon_h+back_size, icon_loc_x:next_icon_loc_x]  = icon_attentive_re
+
+                icon_loc_x = next_icon_loc_x + back_size
+                next_icon_loc_x = icon_loc_x + icon_w
+                if seatbelt_flag == 1:
+                    im0[back_size:icon_h+back_size, icon_loc_x:next_icon_loc_x]  = icon_seatbelt_re
+                else:
+                    icon_seatbelt_re[:,:,2] = 255
+                    im0[back_size:icon_h+back_size, icon_loc_x:next_icon_loc_x]  = icon_seatbelt_re
+
                 if show_text:
                     pitch_str = str(round(pitch.item(), 3))
                     yaw_str = str(-(round(yaw.item(), 3)))
@@ -398,6 +476,11 @@ def detect(opt):
                     print("-------------------------------")
                     print("")
                     cv2.destroyAllWindows()
+                    print('frame_cnt', frame_cnt)
+                    cal_time = time.time() - t0
+                    print(f'Done. ({cal_time:.3f}s)')
+                    print(f'Average FPS : ({frame_cnt/cal_time:.3f}frame/seconds)')
+
                     return 0
                 
                 elif key == ord('T') or key == ord('t'):  # Toggle fullscreen

@@ -75,6 +75,8 @@ def detect(opt):
     print('number of class:',num_cs)
     print(names)
 
+    frame_cnt = 0
+
     t0 = time.time()
     for path, img, im0s, vid_cap in dataset:
         img = torch.from_numpy(img).to(device)
@@ -111,7 +113,6 @@ def detect(opt):
 
             start = time.time()            
             if len(det):
-                print(det.shape)
                 # Rescale boxes from img_size to im0 size
                 scale_coords(img.shape[2:], det[:, :4], im0.shape, kpt_label=False)
                 scale_coords(img.shape[2:], det[:, 5+num_cs:], im0.shape, kpt_label=kpt_label, step=3)
@@ -121,35 +122,6 @@ def detect(opt):
                     n = (det[:, 5:5+num_cs] == c).sum()  # detections per class
                     s += f"{n} {names[int(c)]}{'s' * (n > 1)}, "  # add to string
                 
-                # local parameter 
-                face_max = 0
-                steps = 3
-                driver_face_roi = []
-                driver_kpts = []
-                coordinate = [(0,0) for kid in range(kpt_label)]
-
-                # find driver face
-                for det_index, (*xyxy, conf, cls) in enumerate(reversed(det[:,:5+num_cs])):
-                    kpts = det[det_index, 5+num_cs:]
-                    if names[int(cls)] == 'face':
-                        bb = [int(x) for x in xyxy]
-                        face_area = (bb[2] - bb[0])*(bb[3]-bb[1])
-                        if face_area > face_max :
-                            face_max = face_area
-                            driver_face_roi = bb
-                            driver_kpts = kpts
-
-                if len(driver_face_roi) == 0:
-                    break
-
-                if len(driver_kpts) == 0:
-                    break
-
-                # landmark points
-                for kid in range(kpt_label):
-                    x_coord, y_coord = driver_kpts[steps * kid], driver_kpts[steps * kid + 1]
-                    if not (x_coord % 640 == 0 or y_coord % 640 == 0):
-                        coordinate[kid] = (int(x_coord),int(y_coord))
 
                 # Write results
                 for det_index, (*xyxy, conf, cls) in enumerate(reversed(det[:,:5+num_cs])):
@@ -168,7 +140,6 @@ def detect(opt):
                         if opt.save_crop:
                             save_one_box(xyxy, im0s, file=save_dir / 'crops' / names[c] / f'{p.stem}.jpg', BGR=True)
 
-
                 if save_txt_tidl:  # Write to file in tidl dump format
                     for *xyxy, conf, cls in det_tidl:
                         xyxy = torch.tensor(xyxy).view(-1).tolist()
@@ -179,6 +150,9 @@ def detect(opt):
             end = time.time()
             # Print time (inference + NMS)
             print(f'{s}Done. ({t2 - t1:.3f}s)')
+
+            # update frame_cnt
+            frame_cnt += 1
 
             # Stream results
             if view_img:
@@ -194,6 +168,11 @@ def detect(opt):
                     print("-------------------------------")
                     print("")
                     cv2.destroyAllWindows()
+                    print('frame_cnt', frame_cnt)
+                    cal_time = time.time() - t0
+                    print(f'Done. ({cal_time:.3f}s)')
+                    print(f'Average FPS : ({frame_cnt/cal_time:.3f}frame/seconds)')
+
                     return 0
 
             # Save results (image with detections)

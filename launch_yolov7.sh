@@ -42,7 +42,9 @@ echo [1]: yolov7-lite-t.pt
 echo ----------------
 echo [2]: yolov7-tiny.pt
 echo ----------------
-echo [3]: yolov7-lite-t-Mouth+own+mirrir-34lmk-2200epochs.pt
+echo [3]: yolov7-lite-t-Mouth+own+mirrir-34lmk-2200epochs
+echo ----------------
+echo [4]: yolov7-lite-t-Mouth+own+mirrir-revise-34lmk-2200epochs
 echo ----------------
 echo [n]: None
 echo -n "Press enter to start it:"
@@ -51,15 +53,22 @@ read MY_Weights
 
 if [ $MY_Weights -eq 0 ] ; then
     Weights='yolov7-lite-s.pt'
+    kpt=5
 fi 
 if [ $MY_Weights -eq 1 ] ; then
     Weights='yolov7-lite-t.pt'
+    kpt=5
 fi 
 if [ $MY_Weights -eq 2 ] ; then
     Weights='yolov7-tiny.pt'
+    kpt=5
 fi 
 if [ $MY_Weights -eq 3 ] ; then
     Weights='yolov7-lite-t-Mouth+own+mirrir-34lmk-2200epochs/best.pt' 
+    kpt=34
+fi 
+if [ $MY_Weights -eq 4 ] ; then
+    Weights='yolov7-lite-t-Mouth+own+mirrir-revise-34lmk-2200epochs/best.pt' 
     kpt=34
 fi 
 
@@ -228,11 +237,12 @@ if [ $MY_mode -eq 9 ] ; then
 
     python3 detect_pnp_trt.py \
     --weights ../../weights/yolov7-face/$Weights \
-    --source /media/joe/Xavierssd/2023_0816_otocam_datavideo/output29.avi \
+    --source /media/joe/Xavierssd/2023_0816_otocam_datavideo/output12.avi \
     --conf-thres 0.2 \
     --iou-thres 0.5 \
     --kpt-label $kpt \
-    --project ../yolov7-face-runs/video/
+    --project ../yolov7-face-runs/video/ \
+    --view-img
 
 fi
 

@@ -113,10 +113,10 @@ def detect(opt):
     # ])
 
     # YOLO Trt
-    category_num = 4
+    category_num = 5
     yolo_conf_th = 0.6
     letter_box = True
-    TrtYOLO_model = '../../weights/darknet/yolov4-tiny-20231011-4cs/yolov4-tiny-custom'
+    TrtYOLO_model = '../../weights/darknet/yolov4-tiny-20231106-5cs/yolov4-tiny-custom-5cs'
     cls_dict = get_cls_dict(category_num)
     vis = BBoxVisualization(cls_dict)
     trt_yolo = TrtYOLO(TrtYOLO_model, category_num, letter_box)
@@ -137,6 +137,10 @@ def detect(opt):
     phone_cnt = 0
     max_phone_cnt = 20
     phone_flag = 0
+
+    # inference time
+    yolov7_face_inference = 0
+    yolov4_tiny_inference = 0
     
 
     # Run inference
@@ -232,8 +236,6 @@ def detect(opt):
                     x_coord, y_coord = driver_kpts[steps * kid], driver_kpts[steps * kid + 1]
                     if not (x_coord % 640 == 0 or y_coord % 640 == 0):
                         coordinate[kid] = (int(x_coord),int(y_coord))
-                    else :
-                        alert_flag = 0
                 
                 if kpt_label == 34:
                     if len(coordinate[12]) == 1:
@@ -241,6 +243,7 @@ def detect(opt):
                                     (driver_face_roi[1]+driver_face_roi[3])/2)
                     else :
                         nose_point = coordinate[12]
+
                 elif kpt_label == 36:
                     if len(coordinate[14]) == 1:
                         nose_point = ((driver_face_roi[0]+driver_face_roi[2])/2,
@@ -316,9 +319,9 @@ def detect(opt):
                     # draw
                     leftEyeHull = cv2.convexHull(leftEye)
                     rightEyeHull = cv2.convexHull(rightEye)
-                    cv2.drawContours(im0, [leftEyeHull], -1, (0, 255, 0), 1)
-                    cv2.drawContours(im0, [rightEyeHull], -1, (0, 255, 0), 1)
-                    cv2.drawContours(im0, [lip], -1, (0, 255, 0), 1)
+                    cv2.drawContours(im0, [leftEyeHull], -1, (0, 255, 255), 1)
+                    cv2.drawContours(im0, [rightEyeHull], -1, (0, 255, 255), 1)
+                    cv2.drawContours(im0, [lip], -1, (0, 255, 255), 1)
 
                     # if ear < EYE_AR_THRESH:
                     #     COUNTER += 1
@@ -459,8 +462,9 @@ def detect(opt):
 
             end = time.time()
             # Print time (inference + NMS)
-            print(f'{s}Done. ({t2 - t1:.3f}s)')
-            print(f'YOLOV4-Tiny inference:({t2_yolo - t1_yolo:.3f}s)')
+            # print(f'{s}Done. ({t2 - t1:.3f}s)')
+            yolov7_face_inference += t2 - t1
+            yolov4_tiny_inference += t2_yolo - t1_yolo
 
             # Stream results
             if view_img:
@@ -469,7 +473,7 @@ def detect(opt):
                 cv2.imshow(window_name, im0)
                 key = cv2.waitKey(1)
                 # cv2.imshow(str(p), im0)
-                if key == 27:  # ESC key: quit program
+                if key == 27 or frame_cnt == 500:  # ESC key: quit program
                     print("")
                     print("-------------------------------")
                     print("------ See You Next Time ------")
@@ -479,7 +483,11 @@ def detect(opt):
                     print('frame_cnt', frame_cnt)
                     cal_time = time.time() - t0
                     print(f'Done. ({cal_time:.3f}s)')
-                    print(f'Average FPS : ({frame_cnt/cal_time:.3f}frame/seconds)')
+                    print(f'Average FPS : {frame_cnt/cal_time:.3f} frame/seconds')
+
+                    print(f'YOLOV7-face inference: ({yolov7_face_inference/frame_cnt:.3f}s)')
+                    print(f'YOLOV4-Tiny inference:({yolov4_tiny_inference/frame_cnt:.3f}s)')
+                    print('\n')
 
                     return 0
                 

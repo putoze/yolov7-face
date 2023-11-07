@@ -93,16 +93,7 @@ def plot_skeleton_kpts(im, kpts, steps, orig_shape=None):
                 conf = kpts[steps * kid + 2]
                 if conf < 0.5:
                     continue
-            if kid < 14:
-                cv2.circle(im, (int(x_coord), int(y_coord)), radius, (0,255,0), -1)
-            elif kid == 14:
-                cv2.circle(im, (int(x_coord), int(y_coord)), radius, (255,128,0), -1)
-            elif kid < 27:
-                cv2.circle(im, (int(x_coord), int(y_coord)), radius, (0,0,255), -1)
-            elif kid < 35:
-                cv2.circle(im, (int(x_coord), int(y_coord)), radius, (255,0,0), -1)
-            else:
-                cv2.circle(im, (int(x_coord), int(y_coord)), radius, (255,153,51), -1)
+            cv2.circle(im, (int(x_coord), int(y_coord)), radius, (0,255,0), -1)
 
 
 

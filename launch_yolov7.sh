@@ -46,6 +46,12 @@ echo [3]: yolov7-lite-t-Mouth+own+mirrir-34lmk-2200epochs
 echo ----------------
 echo [4]: yolov7-lite-t-Mouth+own+mirrir-revise-34lmk-2200epochs
 echo ----------------
+echo [5]: yolov7-lite-t-Mouth+own+mirrir-36lmk-revise-2200epochs
+echo ----------------
+echo [6]: yolov7-lite-s-Mouth+own+mirrir-34lmk-revise-2200epochs
+echo ----------------
+echo [7]: yolov7-tiny-Mouth+own+mirrir-34lmk-revise-2200epochs
+echo ----------------
 echo [n]: None
 echo -n "Press enter to start it:"
 
@@ -69,6 +75,18 @@ if [ $MY_Weights -eq 3 ] ; then
 fi 
 if [ $MY_Weights -eq 4 ] ; then
     Weights='yolov7-lite-t-Mouth+own+mirrir-revise-34lmk-2200epochs/best.pt' 
+    kpt=34
+fi 
+if [ $MY_Weights -eq 5 ] ; then
+    Weights='yolov7-lite-t-Mouth+own+mirrir-36lmk-revise-2200epochs/best.pt' 
+    kpt=36
+fi 
+if [ $MY_Weights -eq 6 ] ; then
+    Weights='yolov7-lite-s-Mouth+own+mirrir-revise-34lmk-2200epochs/best.pt' 
+    kpt=34
+fi 
+if [ $MY_Weights -eq 7 ] ; then
+    Weights='yolov7-tiny-Mouth+own+mirrir-34lmk-revise-2200epochs/best.pt' 
     kpt=34
 fi 
 
@@ -237,7 +255,7 @@ if [ $MY_mode -eq 9 ] ; then
 
     python3 detect_pnp_trt.py \
     --weights ../../weights/yolov7-face/$Weights \
-    --source /media/joe/Xavierssd/2023_0816_otocam_datavideo/output12.avi \
+    --source /media/joe/Xavierssd/2023_0816_otocam_datavideo/output29.avi \
     --conf-thres 0.2 \
     --iou-thres 0.5 \
     --kpt-label $kpt \

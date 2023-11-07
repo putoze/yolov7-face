@@ -22,6 +22,14 @@ SELF_CLASSES_LIST_2 = [
 "phone"
 ]
 
+SELF_CLASSES_LIST_5 = [
+"mask",
+"glasses",
+"seatbelt",
+"phone",
+"smoke"
+]
+
 # For translating YOLO class ids (0~79) to SSD class ids (0~90)
 yolo_cls_to_ssd = [
     1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 14, 15, 16, 17, 18, 19, 20,
@@ -38,5 +46,7 @@ def get_cls_dict(category_num):
         return {i: n for i, n in enumerate(SELF_CLASSES_LIST)}
     elif category_num == 9:
         return {i: n for i, n in enumerate(SELF_CLASSES_LIST_2)}
+    if category_num == 5:
+        return {i: n for i, n in enumerate(SELF_CLASSES_LIST_5)}
     else:
         return {i: 'CLS%d' % i for i in range(category_num)}

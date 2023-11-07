@@ -26,8 +26,8 @@ import matplotlib
 
 ## 6D RepNet local
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
-from model_6DRepNet import SixDRepNet
-import utils_with_6D
+from RepNet_6D.model_6DRepNet import SixDRepNet
+import RepNet_6D.utils_with_6D as utils_with_6D
 matplotlib.use('TkAgg')
 
 # coordinate
@@ -177,11 +177,19 @@ def detect(opt):
                 if len(driver_face_roi) == 0:
                     break
 
-                if len(coordinate[14]) == 1:
-                    nose_point = ((driver_face_roi[0]+driver_face_roi[2])/2,
-                                  (driver_face_roi[1]+driver_face_roi[3])/2)
-                else :
-                    nose_point = coordinate[14]
+                if kpt_label == 34:
+                    if len(coordinate[12]) == 1:
+                        nose_point = ((driver_face_roi[0]+driver_face_roi[2])/2,
+                                    (driver_face_roi[1]+driver_face_roi[3])/2)
+                    else :
+                        nose_point = coordinate[12]
+
+                elif kpt_label == 36:
+                    if len(coordinate[14]) == 1:
+                        nose_point = ((driver_face_roi[0]+driver_face_roi[2])/2,
+                                    (driver_face_roi[1]+driver_face_roi[3])/2)
+                    else :
+                        nose_point = coordinate[14]
                 
                 # 6DRepNet
                 x_min,y_min,x_max,y_max = driver_face_roi

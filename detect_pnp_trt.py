@@ -25,7 +25,7 @@ from threading import Thread
 from alert.drowsiness_yawn import alarm,eye_aspect_ratio,final_ear,lip_distance
 
 # 6DRepNet
-import utils_with_6D
+import RepNet_6D.utils_with_6D as utils_with_6D
 
 # YOLO Trt
 import pycuda.autoinit  # This is needed for initializing CUDA driver

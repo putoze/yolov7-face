@@ -34,8 +34,8 @@ import matplotlib
 
 ## 6D RepNet local
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
-from model_6DRepNet import SixDRepNet
-import utils_with_6D
+from RepNet_6D.model_6DRepNet import SixDRepNet
+import RepNet_6D.utils_with_6D as utils_with_6D
 matplotlib.use('TkAgg')
 
 # YOLO Trt

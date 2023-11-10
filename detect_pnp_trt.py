@@ -13,7 +13,7 @@ from models.experimental import attempt_load
 from utils.datasets import LoadStreams, LoadImages
 from utils.general import check_img_size, check_requirements, check_imshow, non_max_suppression, apply_classifier, \
     scale_coords, xyxy2xywh, strip_optimizer, set_logging, increment_path, save_one_box
-from utils.plots import colors, plot_one_box, show_fps
+from utils.plots import colors, plot_one_box, show_fps, plot_kpts
 from utils.torch_utils import select_device, load_classifier, time_synchronized
 
 # alert
@@ -21,7 +21,6 @@ from scipy.spatial import distance as dist
 import numpy as np
 import argparse
 import time
-from threading import Thread
 from alert.drowsiness_yawn import alarm,eye_aspect_ratio,final_ear,lip_distance
 
 # 6DRepNet
@@ -162,10 +161,11 @@ def detect(opt):
         t1 = time_synchronized()
         pred = model(img, augment=opt.augment)[0]
         # print(pred[...,4].max())
-        
+        t2 = time_synchronized()
+
         # Apply NMS
         pred = non_max_suppression(pred, opt.conf_thres, opt.iou_thres, classes=opt.classes, agnostic=opt.agnostic_nms, kpt_label=kpt_label)
-        t2 = time_synchronized()
+        t3 = time_synchronized()
 
         # Apply Classifier
         if classify:
@@ -184,15 +184,15 @@ def detect(opt):
             s += '%gx%g ' % img.shape[2:]  # print string
             gn = torch.tensor(im0.shape)[[1, 0, 1, 0]]  # normalization gain whwh
 
-            start = time.time() 
+            start = time.time()    
             if len(det):
                 # Rescale boxes from img_size to im0 size
                 scale_coords(img.shape[2:], det[:, :4], im0.shape, kpt_label=False)
-                scale_coords(img.shape[2:], det[:, 5+num_cs:], im0.shape, kpt_label=kpt_label, step=3)
+                scale_coords(img.shape[2:], det[:, 6:], im0.shape, kpt_label=kpt_label, step=3)
 
                 # Print results
-                for c in det[:, 5:5+num_cs].unique():
-                    n = (det[:, 5:5+num_cs] == c).sum()  # detections per class
+                for c in det[:, 5].unique():
+                    n = (reversed(det[:, 5]) == c).sum()  # detections per class
                     s += f"{n} {names[int(c)]}{'s' * (n > 1)}, "  # add to string
                 
                 # self code
@@ -236,6 +236,9 @@ def detect(opt):
                     x_coord, y_coord = driver_kpts[steps * kid], driver_kpts[steps * kid + 1]
                     if not (x_coord % 640 == 0 or y_coord % 640 == 0):
                         coordinate[kid] = (int(x_coord),int(y_coord))
+
+                # draw coordinate
+                plot_kpts(im0,coordinate)
                 
                 if kpt_label == 34:
                     if len(coordinate[12]) == 1:
@@ -447,8 +450,7 @@ def detect(opt):
                     if save_img or opt.save_crop or view_img:  # Add bbox to image
                         c = int(cls)  # integer class
                         label = None if opt.hide_labels else (names[c] if opt.hide_conf else f'{names[c]} {conf:.2f}')
-                        kpts = det[det_index, 5+num_cs:]
-                        plot_one_box(xyxy, im0, label=label, color=colors(c, True), line_thickness=opt.line_thickness, kpt_label=kpt_label, kpts=kpts, steps=3, orig_shape=im0.shape[:2])
+                        plot_one_box(xyxy, im0, label=label, color=colors(c, True), line_thickness=opt.line_thickness)
                         if opt.save_crop:
                             save_one_box(xyxy, im0s, file=save_dir / 'crops' / names[c] / f'{p.stem}.jpg', BGR=True)
 
@@ -464,7 +466,7 @@ def detect(opt):
             # Print time (inference + NMS)
             # print(f'{s}Done. ({t2 - t1:.3f}s)')
             yolov7_face_inference += t2 - t1
-            yolov4_tiny_inference += t2_yolo - t1_yolo
+            #yolov4_tiny_inference += t2_yolo - t1_yolo
 
             # Stream results
             if view_img:
@@ -486,7 +488,7 @@ def detect(opt):
                     print(f'Average FPS : {frame_cnt/cal_time:.3f} frame/seconds')
 
                     print(f'YOLOV7-face inference: ({yolov7_face_inference/frame_cnt:.3f}s)')
-                    print(f'YOLOV4-Tiny inference:({yolov4_tiny_inference/frame_cnt:.3f}s)')
+                    #print(f'YOLOV4-Tiny inference:({yolov4_tiny_inference/frame_cnt:.3f}s)')
                     print('\n')
 
                     return 0

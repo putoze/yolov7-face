@@ -3,7 +3,7 @@ echo ""
 echo "Hello, choose the env you want it~"
 echo [0]: yolov7-gaze
 echo ----------------
-echo [1]: yolov3_tenrt
+echo [1]: yolov7-eye[export onnx]
 echo ----------------
 echo [n]: None
 echo ----------------
@@ -25,10 +25,10 @@ fi
 
 if [ $ENV_Set -eq 1 ] ; then
     source activate
-    conda activate yolov3_tenrt
+    conda activate yolov7-eye
 
     echo ============
-    echo 「Success Enter yolov3_tenrt」
+    echo 「Success Enter yolov7-eye」
     echo ============
 fi
 
@@ -51,6 +51,10 @@ echo ----------------
 echo [6]: yolov7-lite-s-Mouth+own+mirrir-34lmk-revise-2200epochs
 echo ----------------
 echo [7]: yolov7-tiny-Mouth+own+mirrir-34lmk-revise-2200epochs
+echo ----------------
+echo [8]: yolov7-lite-t-own-revise-34lmk-5cs-600epochs
+echo ----------------
+echo [9]: yolov7-lite-t-Mouth+own+mirrir+50cm-34lmk-revise-2200epochs
 echo ----------------
 echo [n]: None
 echo -n "Press enter to start it:"
@@ -89,6 +93,17 @@ if [ $MY_Weights -eq 7 ] ; then
     Weights='yolov7-tiny-Mouth+own+mirrir-34lmk-revise-2200epochs/best.pt' 
     kpt=34
 fi 
+if [ $MY_Weights -eq 8 ] ; then
+    Weights='yolov7-lite-t-own-revise-34lmk-5cs-600epochs/best.pt' 
+    kpt=34
+
+    # Weights='yolov7-lite-t-Mouth+own+mirrir-36lmk-5cs-1200epochs/best.pt'
+    # kpt=36
+fi 
+if [ $MY_Weights -eq 9 ] ; then
+    Weights='yolov7-lite-t-Mouth+own+mirrir+50cm-34lmk-revise-2200epochs/best.pt' 
+    kpt=34
+fi 
 
 echo "The weights you choose:" $Weights
 echo "The kpt number you choose:" $kpt
@@ -120,6 +135,9 @@ echo [12]: otocam detect_pnp_trt_6D
 echo ----------------
 echo [13]: Video detect_pnp_trt_6D
 echo ----------------
+echo ============================
+echo ----------------
+echo [100]: export onnx
 echo -n "Press enter to start it:"
 
 read MY_mode
@@ -255,7 +273,7 @@ if [ $MY_mode -eq 9 ] ; then
 
     python3 detect_pnp_trt.py \
     --weights ../../weights/yolov7-face/$Weights \
-    --source /media/joe/Xavierssd/2023_0816_otocam_datavideo/output29.avi \
+    --source /media/joe/Xavierssd/2023_0816_otocam_datavideo/output12.avi \
     --conf-thres 0.2 \
     --iou-thres 0.5 \
     --kpt-label $kpt \
@@ -263,6 +281,22 @@ if [ $MY_mode -eq 9 ] ; then
     --view-img
 
 fi
+
+#============================================================================ 
+#============================================================================ 
+#============================================================================ 
+
+
+if [ $MY_mode -eq 100 ] ; then
+    echo ============
+    echo 「export onnx」
+    echo ============
+
+    python ./models/export.py \
+    --weights ../../weights/yolov7-face/$Weights 
+
+fi
+
 
 #============================================================================ End
 echo [===YOLO===] ok!

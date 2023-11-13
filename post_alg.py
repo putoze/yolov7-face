@@ -43,6 +43,16 @@ model_points = np.array([
                             (150.0, -150.0, -125.0)      # Right mouth corner
                         ])
 
+    # 3D model points.
+    # model_points = np.array([
+    #     (0.0, 0.0, 0.0),  # Nose tip
+    #     (0, -63.6, -12.5),  # Chin
+    #     (-43.3, 32.7, -26),  # Left eye, left corner
+    #     (43.3, 32.7, -26),  # Right eye, right corner
+    #     (-28.9, -28.9, -24.1),  # Left Mouth corner
+    #     (28.9, -28.9, -24.1)  # Right mouth corner
+    # ])
+
 def fitEllipse(input_img,flag_list):
     target_img = None
 

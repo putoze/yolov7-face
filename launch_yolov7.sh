@@ -137,10 +137,6 @@ echo [8]: otocam detect_pnp_trt
 echo ----------------
 echo [9]: Video detect_pnp_trt
 echo ----------------
-echo [12]: otocam detect_pnp_trt_6D
-echo ----------------
-echo [13]: Video detect_pnp_trt_6D
-echo ----------------
 echo ============================
 echo ----------------
 echo [100]: export onnx

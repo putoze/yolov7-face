@@ -23,14 +23,18 @@ import argparse
 import time
 from alert.drowsiness_yawn import alarm,eye_aspect_ratio,final_ear,lip_distance
 
-# 6DRepNet
-import RepNet_6D.utils_with_6D as utils_with_6D
+## 6D RepNet 
+from RepNet_6D.model_6DRepNet import SixDRepNet
 
 # YOLO Trt
 import pycuda.autoinit  # This is needed for initializing CUDA driver
 from utils_ten.yolo_classes import get_cls_dict
 from utils_ten.visualization import BBoxVisualization
 from utils_ten.yolo_with_plugins import TrtYOLO
+
+# self add
+from post_alg import fitEllipse, alert_alg, alg_6DRepNet, icon_alg
+
 
 window_name = 'YOLOV7-face'
 
@@ -65,6 +69,8 @@ def detect(opt):
         imgsz = check_img_size(imgsz, s=stride)  # check img_size
     
     names = model.module.names if hasattr(model, 'module') else model.names  # get class names
+    colors = [[random.randint(0, 255) for _ in range(3)] for _ in names]
+
     if half:
         model.half()  # to FP16
 
@@ -83,34 +89,6 @@ def detect(opt):
     else:
         dataset = LoadImages(source, img_size=imgsz, stride=stride)
 
-    # Alert
-    EYE_AR_THRESH = 0.3
-    EYE_AR_CONSEC_FRAMES = 30
-    YAWN_THRESH = 20
-    alarm_status = False
-    alarm_status2 = False
-    saying = False
-    COUNTER = 0
-
-    # 3D model points.
-    model_points = np.array([
-                                (0.0, 0.0, 0.0),             # Nose tip
-                                (0.0, -330.0, -65.0),        # Chin
-                                (-225.0, 170.0, -135.0),     # Left eye left corner
-                                (225.0, 170.0, -135.0),      # Right eye right corne
-                                (-150.0, -150.0, -125.0),    # Left Mouth corner
-                                (150.0, -150.0, -125.0)      # Right mouth corner
-                            ])
-    # 3D model points.
-    # model_points = np.array([
-    #     (0.0, 0.0, 0.0),  # Nose tip
-    #     (0, -63.6, -12.5),  # Chin
-    #     (-43.3, 32.7, -26),  # Left eye, left corner
-    #     (43.3, 32.7, -26),  # Right eye, right corner
-    #     (-28.9, -28.9, -24.1),  # Left Mouth corner
-    #     (28.9, -28.9, -24.1)  # Right mouth corner
-    # ])
-
     # YOLO Trt
     category_num = 5
     yolo_conf_th = 0.6
@@ -120,26 +98,46 @@ def detect(opt):
     vis = BBoxVisualization(cls_dict)
     trt_yolo = TrtYOLO(TrtYOLO_model, category_num, letter_box)
 
-    # Text show
-    base_txt_height = 35
-    gap_txt_height = 35
+    # ------ self add parameters ------
 
-    # frame counter
+    # times
     frame_cnt = 0
-
+    yolov7_face_inference = 0
+    yolov4_tiny_inference = 0
     # seatbelt
     seatbelt_cnt = 0
     max_seatbelt_cnt = 20
-    seatbelt_flag = 0
-
     # phone
     phone_cnt = 0
     max_phone_cnt = 20
-    phone_flag = 0
+    # smoke
+    smoke_cnt = 0
+    max_smoke_cnt = 20
 
-    # inference time
-    yolov7_face_inference = 0
-    yolov4_tiny_inference = 0
+    # Text show
+    show_text = 1
+    gap_txt_height = 35
+
+    # flag
+    icon_flag = [0,0,0] # seatbelt, phone, smoke
+    post_flag = [1,0,1] # alert, 6D, icon
+
+    # 6D_Repnet
+    snapshot_path_6D = '../../weights/6DRepNet/6DRepNet_300W_LP_AFLW2000.pth'
+    model_6DRepNet = SixDRepNet(backbone_name='RepVGG-B1g2',
+                       backbone_file='',
+                       deploy=True,
+                       pretrained=False)
+
+    saved_state_dict = torch.load(os.path.join(
+        snapshot_path_6D), map_location='cpu')
+
+    if 'model_state_dict' in saved_state_dict:
+        model_6DRepNet.load_state_dict(saved_state_dict['model_state_dict'])
+    else:
+        model_6DRepNet.load_state_dict(saved_state_dict)
+    model_6DRepNet.to(device)
+    # End 6D_Repnet
     
 
     # Run inference
@@ -210,20 +208,51 @@ def detect(opt):
                 steps = 3
                 driver_face_roi = []
                 driver_kpts = []
-                show_text = 1
                 coordinate = [(0,0) for kid in range(kpt_label)]
 
+                # Text show
+                next_txt_height = 35
+
                 # find driver face
-                for det_index, (*xyxy, conf, cls) in enumerate(reversed(det[:,:5+num_cs])):
-                    kpts = det[det_index, 5+num_cs:]
+                for det_index, (*xyxy, conf, cls) in enumerate((det[:,:6])):
                     if names[int(cls)] == 'face':
+                        kpts = det[det_index, 6:]
                         bb = [int(x) for x in xyxy]
-                        face_area = (bb[2] - bb[0])*(bb[3]-bb[1])
+                        face_area = (bb[2] - bb[0])*(bb[3] - bb[1])
                         if face_area > face_max :
                             face_max = face_area
                             driver_face_roi = bb
                             driver_kpts = kpts
 
+                # YOLOV4-Tiny TRT 
+                for bb, cf, cl in zip(boxes, confs, clss): 
+                    if cl == 2:
+                        seatbelt_cnt += 1
+                    elif cl == 3:
+                        phone_cnt += 1
+                    elif cl == 4:
+                        smoke_cnt += 1
+
+                # object
+                if frame_cnt % max_seatbelt_cnt == 0:
+                    if seatbelt_cnt >= max_seatbelt_cnt * 0.5:
+                        icon_flag[0] = 1
+                    else:
+                        icon_flag[0] = 0
+
+                    if phone_cnt >= max_phone_cnt * 0.5:
+                        icon_flag[1] = 1
+                    else:
+                        icon_flag[1] = 0
+
+                    if smoke_cnt >= max_smoke_cnt * 0.5:
+                        icon_flag[2] = 1
+                    else:
+                        icon_flag[2] = 0
+                    
+                    seatbelt_cnt = 0
+                    phone_cnt = 0
+                    smoke_cnt = 0
 
                 if len(driver_face_roi) == 0:
                     break
@@ -239,7 +268,8 @@ def detect(opt):
 
                 # draw coordinate
                 plot_kpts(im0,coordinate)
-                
+
+                # find nose point
                 if kpt_label == 34:
                     if len(coordinate[12]) == 1:
                         nose_point = ((driver_face_roi[0]+driver_face_roi[2])/2,
@@ -254,193 +284,68 @@ def detect(opt):
                     else :
                         nose_point = coordinate[14]
 
-                # headpose
-                size = im0.shape[:2]
-                
-                # Camera internals
-                
-                focal_length = size[1]
-                center = (size[1]/2, size[0]/2)
-                camera_matrix = np.array(
-                                        [[focal_length, 0, center[0]],
-                                        [0, focal_length, center[1]],
-                                        [0, 0, 1]], dtype = "double")
-                                
-                dist_coeffs = np.zeros((4,1)) # Assuming no lens distortion
-                # points_2D_list = [12,33,0,9,13,19]
-                if kpt_label == 34:
-                    image_points = np.array([coordinate[12],
-                                            coordinate[33],
-                                            coordinate[0],
-                                            coordinate[9],
-                                            coordinate[13],
-                                            coordinate[19]], dtype="double")
-                elif kpt_label == 36:
-                    image_points = np.array([coordinate[14],
-                                            coordinate[35],
-                                            coordinate[0],
-                                            coordinate[10],
-                                            coordinate[15],
-                                            coordinate[21]], dtype="double")
+                # alert
+                if post_flag[0]:
+                    im0,yaw,pitch,roll = alert_alg(im0,kpt_label,coordinate,nose_point,alert_flag)
 
-                (success, rotation_vector, translation_vector) = cv2.solvePnP(model_points, image_points, camera_matrix, dist_coeffs, flags=cv2.SOLVEPNP_ITERATIVE)
+                # 6D RepNet
+                if post_flag[1]:
+                    im0,y_pred_deg,p_pred_deg,r_pred_deg = alg_6DRepNet(im0,driver_face_roi,model_6DRepNet,device,nose_point)
 
-                rvec_matrix = cv2.Rodrigues(rotation_vector)[0]
-                proj_matrix = np.hstack((rvec_matrix, translation_vector))
-                eulerAngles = cv2.decomposeProjectionMatrix(proj_matrix)[6]
-
-                yaw   =  eulerAngles[1]
-                if eulerAngles[0] > 0:
-                    pitch =  180 - eulerAngles[0]
-                else :
-                    pitch =  -(180 + eulerAngles[0])
-                roll  =  eulerAngles[2]
-                
-                tdx = size[1] - 70
-                tdy = 70*2
-
-                utils_with_6D.draw_axis(im0,yaw,pitch,roll,tdx,tdy, size = 50)
-                utils_with_6D.draw_gaze_6D(nose_point,im0,yaw,pitch,color=(0,0,255))
-
-                # Alert
-                if alert_flag:
-                    coordinate_np = np.array(coordinate)
-                    if kpt_label == 34:
-                        leftEye = coordinate_np[0:6]
-                        rightEye = coordinate_np[6:12]
-                        distance = lip_distance(coordinate_np[13:33])
-                        lip = coordinate_np[13:25]
-                    elif kpt_label == 36:
-                        leftEye = coordinate_np[0:6]
-                        rightEye = coordinate_np[7:13]
-                        distance = lip_distance(coordinate_np[15:35])
-                        lip = coordinate_np[15:27]
-
-                    # EAR
-                    ear = final_ear(leftEye,rightEye)
-
-                    # draw
-                    leftEyeHull = cv2.convexHull(leftEye)
-                    rightEyeHull = cv2.convexHull(rightEye)
-                    cv2.drawContours(im0, [leftEyeHull], -1, (0, 255, 255), 1)
-                    cv2.drawContours(im0, [rightEyeHull], -1, (0, 255, 255), 1)
-                    cv2.drawContours(im0, [lip], -1, (0, 255, 255), 1)
-
-                    # if ear < EYE_AR_THRESH:
-                    #     COUNTER += 1
-
-                    #     if COUNTER >= EYE_AR_CONSEC_FRAMES:
-                    #         if alarm_status == False:
-                    #             alarm_status = True
-
-                    #         cv2.putText(im0, "DROWSINESS ALERT!", (10, 30),
-                    #                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
-
-                    # else:
-                    #     COUNTER = 0
-                    #     alarm_status = False
-
-                    # if (distance > YAWN_THRESH):
-                    #         cv2.putText(im0, "Yawn Alert", (10, 30),
-                    #                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
-                    #         if alarm_status2 == False and saying == False:
-                    #             alarm_status2 = True
-                                
-                    # else:
-                    #     alarm_status2 = False
-
-                    cv2.putText(im0, "EAR: {:.2f}".format(ear), (300, 30),
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
-                    cv2.putText(im0, "YAWN: {:.2f}".format(distance), (300, 60),
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
-                    
-                # End Alert
-
-                
-                for bb, cf, cl in zip(boxes, confs, clss): 
-                    if cl == 2:
-                        seatbelt_cnt += 1
-                    elif cl == 3:
-                        phone_cnt += 1
-
-
-                # seatbelt
-                if frame_cnt % max_seatbelt_cnt == 0:
-                    if seatbelt_cnt >= max_seatbelt_cnt * 0.5:
-                        seatbelt_flag = 1
-                    else:
-                        seatbelt_flag = 0
-
-                    if phone_cnt >= max_phone_cnt * 0.5:
-                        phone_flag = 1
-                    else:
-                        phone_flag = 0
-                    
-                    seatbelt_cnt = 0
-                    phone_cnt = 0
-
-                # update frame_cnt
-                frame_cnt += 1
-
-                # ICON
-                icon_w = 75
-                icon_h = 75
-                back_size = 25
-                num_icon = 4
-
-                icon_drowsiness= cv2.imread("./icon/drowsiness.png")
-                icon_drowsiness_re = cv2.resize(icon_drowsiness,(icon_w,icon_h))
-                icon_phone = cv2.imread("./icon/phone.png")
-                icon_phone_re = cv2.resize(icon_phone,(icon_w,icon_h))
-                icon_attentive = cv2.imread("./icon/attentive.png")
-                icon_attentive_re = cv2.resize(icon_attentive,(icon_w,icon_h))
-                icon_seatbelt = cv2.imread("./icon/seatbelt.png")
-                icon_seatbelt_re = cv2.resize(icon_seatbelt,(icon_w,icon_h))
-
-                icon_loc_x = 600
-                next_icon_loc_x = icon_loc_x + icon_w
-                im0[back_size:icon_h+back_size, icon_loc_x:next_icon_loc_x]  = icon_drowsiness_re
-
-                icon_loc_x = next_icon_loc_x + back_size
-                next_icon_loc_x = icon_loc_x + icon_w
-                if phone_flag == 1:
-                    icon_phone_re[:,:,2] = 255
-                    im0[back_size:icon_h+back_size, icon_loc_x:next_icon_loc_x]  = icon_phone_re
-                else:
-                    im0[back_size:icon_h+back_size, icon_loc_x:next_icon_loc_x]  = icon_phone_re
-
-                icon_loc_x = next_icon_loc_x + back_size
-                next_icon_loc_x = icon_loc_x + icon_w
-                im0[back_size:icon_h+back_size, icon_loc_x:next_icon_loc_x]  = icon_attentive_re
-
-                icon_loc_x = next_icon_loc_x + back_size
-                next_icon_loc_x = icon_loc_x + icon_w
-                if seatbelt_flag == 1:
-                    im0[back_size:icon_h+back_size, icon_loc_x:next_icon_loc_x]  = icon_seatbelt_re
-                else:
-                    icon_seatbelt_re[:,:,2] = 255
-                    im0[back_size:icon_h+back_size, icon_loc_x:next_icon_loc_x]  = icon_seatbelt_re
+                # icon
+                if post_flag[2]:
+                    im0 = icon_alg(im0,icon_flag)
 
                 if show_text:
-                    pitch_str = str(round(pitch.item(), 3))
-                    yaw_str = str(-(round(yaw.item(), 3)))
-                    roll_str = str(round(roll.item(), 3))
-                    #(img, text, org, fontFace, fontScale, color, thickness, lineType)
-                    next_txt_height = base_txt_height
-                    cv2.putText(im0,"HEAD-POSE PNP",(0,next_txt_height), 
-                                cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
-                    next_txt_height += gap_txt_height
-                    cv2.putText(im0,"roll:"+roll_str,(0,next_txt_height), 
-                                cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
-                    next_txt_height += gap_txt_height
-                    cv2.putText(im0,"yaw:"+yaw_str,(0,next_txt_height), 
-                                cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-                    next_txt_height += gap_txt_height
-                    cv2.putText(im0,"pitch:"+pitch_str,(0,next_txt_height), 
-                                cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+                    if post_flag[0]:
+                        pitch_str = str(round(pitch.item(), 3))
+                        yaw_str = str(-(round(yaw.item(), 3)))
+                        roll_str = str(round(roll.item(), 3))
+                        #(img, text, org, fontFace, fontScale, color, thickness, lineType)
+                        cv2.putText(im0,"HEAD-POSE PNP",(0,next_txt_height), 
+                                    cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
+                        next_txt_height += gap_txt_height
+                        cv2.putText(im0,"roll:"+roll_str,(0,next_txt_height), 
+                                    cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
+                        next_txt_height += gap_txt_height
+                        cv2.putText(im0,"yaw:"+yaw_str,(0,next_txt_height), 
+                                    cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+                        next_txt_height += gap_txt_height
+                        cv2.putText(im0,"pitch:"+pitch_str,(0,next_txt_height), 
+                                    cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+                        next_txt_height += gap_txt_height
+                    if post_flag[1]:
+                        p_pred_str = str(round(p_pred_deg[0].item(), 3))
+                        y_pred_str = str(-(round(y_pred_deg[0].item(), 3)))
+                        r_pred_str = str(round(r_pred_deg[0].item(), 3))
+                        #(img, text, org, fontFace, fontScale, color, thickness, lineType)
+                        cv2.putText(im0,"HEAD-POSE 6D",(0,next_txt_height), 
+                                    cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 0), 2)
+                        next_txt_height += gap_txt_height
+                        cv2.putText(im0,"roll:"+r_pred_str,(0,next_txt_height), 
+                                    cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
+                        next_txt_height += gap_txt_height
+                        cv2.putText(im0,"yaw:"+y_pred_str,(0,next_txt_height), 
+                                    cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+                        next_txt_height += gap_txt_height
+                        cv2.putText(im0,"pitch:"+p_pred_str,(0,next_txt_height), 
+                                    cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+                        next_txt_height += gap_txt_height
+
+                # eye
+                # eye_imgL = im0[coordinate[1][1]:coordinate[5][1],coordinate[0][0]:coordinate[3][0],:]
+                # eye_imgR = im0[coordinate[7][1]:coordinate[11][1],coordinate[6][0]:coordinate[9][0],:]
+                # flag_list = [1,1,1,1,1,1,1]
+                # eye_imgL_th = fitEllipse.find_max_Thresh(eye_imgL,flag_list)
+                # eye_imgR_th = fitEllipse.find_max_Thresh(eye_imgR,flag_list)
+                # cv2.ellipse(eye_imgL, eye_imgL_th, (0,255,0), 1)
+                # cv2.ellipse(eye_imgR, eye_imgR_th, (0,255,0), 1)
+
+                # im0[0:50,0:100,:] = cv2.resize(eye_imgL,(100,50))
+                # im0[0:50,100:200,:] = cv2.resize(eye_imgL,(100,50))
 
                 # Write results
-                for det_index, (*xyxy, conf, cls) in enumerate(reversed(det[:,:5+num_cs])):
+                for det_index, (*xyxy, conf, cls) in enumerate(reversed(det[:,:6])):
                     if save_txt:  # Write to file
                         xywh = (xyxy2xywh(torch.tensor(xyxy).view(1, 4)) / gn).view(-1).tolist()  # normalized xywh
                         line = (cls, *xywh, conf) if opt.save_conf else (cls, *xywh)  # label format
@@ -450,10 +355,9 @@ def detect(opt):
                     if save_img or opt.save_crop or view_img:  # Add bbox to image
                         c = int(cls)  # integer class
                         label = None if opt.hide_labels else (names[c] if opt.hide_conf else f'{names[c]} {conf:.2f}')
-                        plot_one_box(xyxy, im0, label=label, color=colors(c, True), line_thickness=opt.line_thickness)
+                        plot_one_box(xyxy, im0, label=label, color=colors[int(cls)], line_thickness=opt.line_thickness)
                         if opt.save_crop:
                             save_one_box(xyxy, im0s, file=save_dir / 'crops' / names[c] / f'{p.stem}.jpg', BGR=True)
-
 
                 if save_txt_tidl:  # Write to file in tidl dump format
                     for *xyxy, conf, cls in det_tidl:
@@ -462,34 +366,39 @@ def detect(opt):
                         with open(txt_path + '.txt', 'a') as f:
                             f.write(('%g ' * len(line)).rstrip() % line + '\n')
 
-            end = time.time()
             # Print time (inference + NMS)
-            # print(f'{s}Done. ({t2 - t1:.3f}s)')
-            yolov7_face_inference += t2 - t1
-            #yolov4_tiny_inference += t2_yolo - t1_yolo
+            print(f'{s}Done. ({(1E3 * (t2 - t1)):.1f}ms) Inference, ({(1E3 * (t3 - t2)):.1f}ms) NMS')
+
+            # inference times
+            if frame_cnt != 0:
+                yolov7_face_inference += t3 - t1
+                yolov4_tiny_inference += t2_yolo - t1_yolo
+
+            # update frame_cnt
+            frame_cnt += 1
+            
 
             # Stream results
             if view_img:
-                fps = 1.0 / (end - start)
+                fps = 1.0 / (t3 - t1)
                 im0 = show_fps(im0, fps)
                 cv2.imshow(window_name, im0)
                 key = cv2.waitKey(1)
                 # cv2.imshow(str(p), im0)
-                if key == 27 or frame_cnt == 500:  # ESC key: quit program
+                if key == 27 :  # ESC key: quit program 
                     print("")
                     print("-------------------------------")
                     print("------ See You Next Time ------")
                     print("-------------------------------")
                     print("")
                     cv2.destroyAllWindows()
+                    frame_cnt -= 1
                     print('frame_cnt', frame_cnt)
-                    cal_time = time.time() - t0
-                    print(f'Done. ({cal_time:.3f}s)')
-                    print(f'Average FPS : {frame_cnt/cal_time:.3f} frame/seconds')
-
-                    print(f'YOLOV7-face inference: ({yolov7_face_inference/frame_cnt:.3f}s)')
-                    #print(f'YOLOV4-Tiny inference:({yolov4_tiny_inference/frame_cnt:.3f}s)')
-                    print('\n')
+                    print(f'Average YOLOv7 Inference times:({(yolov7_face_inference/frame_cnt):.3f}seconds)')
+                    print(f'Average YOLOv4 Inference times:({(yolov4_tiny_inference/frame_cnt):.3f}seconds)')
+                    total_cal = time.time() - t0
+                    print(f'Done. ({total_cal:.3f}s)')
+                    print(f'Average FPS : ({(frame_cnt + 1)/total_cal:.3f}frame/seconds)')
 
                     return 0
                 

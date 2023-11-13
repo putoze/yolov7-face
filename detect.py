@@ -135,11 +135,11 @@ def detect(opt):
                 coordinate = [(0,0) for kid in range(kpt_label)]
 
                 # find driver face
-                for det_index, (*xyxy, conf, cls) in enumerate(reversed(det[:,:6])):
-                    kpts = det[det_index, 6:]
+                for det_index, (*xyxy, conf, cls) in enumerate((det[:,:6])):
                     if names[int(cls)] == 'face':
+                        kpts = det[det_index, 6:]
                         bb = [int(x) for x in xyxy]
-                        face_area = (bb[2] - bb[0])*(bb[3]-bb[1])
+                        face_area = (bb[2] - bb[0])*(bb[3] - bb[1])
                         if face_area > face_max :
                             face_max = face_area
                             driver_face_roi = bb

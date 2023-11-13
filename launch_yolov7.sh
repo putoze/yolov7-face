@@ -56,6 +56,8 @@ echo [8]: yolov7-lite-t-own-revise-34lmk-5cs-600epochs
 echo ----------------
 echo [9]: yolov7-lite-t-Mouth+own+mirrir+50cm-34lmk-revise-2200epochs
 echo ----------------
+echo [10]: yolov7-lite-t-Mouth+own+mirrir+6cs-34lmk-revise-2200epochs
+echo ----------------
 echo [n]: None
 echo -n "Press enter to start it:"
 
@@ -104,6 +106,10 @@ if [ $MY_Weights -eq 9 ] ; then
     Weights='yolov7-lite-t-Mouth+own+mirrir+50cm-34lmk-revise-2200epochs/best.pt' 
     kpt=34
 fi 
+if [ $MY_Weights -eq 10 ] ; then
+    Weights='yolov7-lite-t-Mouth+own+mirrir+6cs-34lmk-revise-2200epochs/best.pt' 
+    kpt=34
+fi 
 
 echo "The weights you choose:" $Weights
 echo "The kpt number you choose:" $kpt
@@ -123,9 +129,9 @@ echo [3]: video detect
 echo ----------------
 echo ============================
 echo ----------------
-echo [4]: otocam detect_6D
+echo [4]: otocam detect_post
 echo ----------------
-echo [5]: video detect_6D
+echo [5]: video detect_post
 echo ----------------
 echo [8]: otocam detect_pnp_trt
 echo ----------------
@@ -215,10 +221,10 @@ fi
 
 if [ $MY_mode -eq 4 ] ; then
     echo ============
-    echo 「otocam  detect_6D」
+    echo 「otocam  detect_post」
     echo ============
 
-    python detect_6D.py \
+    python detect_post.py \
     --weight ../../weights/yolov7-face/$Weights \
     --conf-thres 0.2 \
     --iou-thres 0.5 \
@@ -233,10 +239,10 @@ fi
 
 if [ $MY_mode -eq 5 ] ; then
     echo ============
-    echo 「Video  detect_6D」
+    echo 「Video  detect_post」
     echo ============
 
-    python3 detect_6D.py \
+    python3 detect_post.py \
     --weights ../../weights/yolov7-face/$Weights \
     --source /media/joe/Xavierssd/2023_0816_otocam_datavideo/output29.avi \
     --conf-thres 0.2 \

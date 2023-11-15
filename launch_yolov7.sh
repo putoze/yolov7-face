@@ -222,7 +222,7 @@ if [ $MY_mode -eq 4 ] ; then
 
     python detect_post.py \
     --weight ../../weights/yolov7-face/$Weights \
-    --conf-thres 0.2 \
+    --conf-thres 0.5 \
     --iou-thres 0.5 \
     --source cam.txt \
     --kpt-label $kpt \

@@ -8,6 +8,7 @@ import cv2
 import torch
 import torch.backends.cudnn as cudnn
 from numpy import random
+import numpy as np
 
 from models.experimental import attempt_load
 from utils.datasets import LoadStreams, LoadImages
@@ -21,6 +22,12 @@ from post_alg import fitEllipse, alert_alg, alg_6DRepNet, icon_alg
 
 ## 6D RepNet 
 from RepNet_6D.model_6DRepNet import SixDRepNet
+
+# YOLO Trt
+import pycuda.autoinit  # This is needed for initializing CUDA driver
+from utils_ten.yolo_classes import get_cls_dict
+from utils_ten.visualization import BBoxVisualization
+from utils_ten.yolo_with_plugins import TrtYOLO
 
 
 window_name = 'YOLOV7-face'
@@ -55,7 +62,16 @@ def detect(opt):
         imgsz = check_img_size(imgsz, s=stride)  # check img_size
     
     names = model.module.names if hasattr(model, 'module') else model.names  # get class names
-    colors = [[random.randint(0, 255) for _ in range(3)] for _ in names]
+    # colors = [[random.randint(0, 255) for _ in range(3)] for _ in names]
+
+    colors = [[255, 0, 0],   # 紅色
+    [0, 255, 0],   # 綠色
+    [0, 0, 255],   # 藍色
+    [255, 255, 0], # 黃色
+    [255, 0, 255], # 品紅
+    [0, 255, 255], # 青色
+    [255, 165, 0]  # 橙色
+]
 
     if half:
         model.half()  # to FP16
@@ -97,6 +113,16 @@ def detect(opt):
     model_6DRepNet.to(device)
     # End 6D_Repnet
 
+    # YOLO Trt
+    category_num = 9
+    yolo_conf_th = 0.6
+    letter_box = True
+    TrtYOLO_model = '../../weights/darknet/yolov4-tiny-20231005/yolov4-tiny-custom'
+    cls_dict = get_cls_dict(category_num)
+    vis = BBoxVisualization(cls_dict)
+    trt_yolo = TrtYOLO(TrtYOLO_model, category_num, letter_box)
+    # End YOLO Trt
+
     # number of class
     num_cs = len(names)
     print('number of class:',num_cs)
@@ -124,7 +150,7 @@ def detect(opt):
 
     # flag
     icon_flag = [0,0,0] # seatbelt, phone, smoke
-    post_flag = [1,0,1] # alert, 6D, icon
+    post_flag = [0,1,1] # alert, 6D, icon
 
     t0 = time.time()
     for path, img, im0s, vid_cap in dataset:
@@ -160,8 +186,65 @@ def detect(opt):
             txt_path = str(save_dir / 'labels' / p.stem) + ('' if dataset.mode == 'image' else f'_{frame}')  # img.txt
             s += '%gx%g ' % img.shape[2:]  # print string
             gn = torch.tensor(im0.shape)[[1, 0, 1, 0]]  # normalization gain whwh
- 
-            if len(det):
+
+            mode = 0
+            if mode == 1:
+                mode1_t0 = time.time()
+                t1_yolo = time_synchronized() 
+                boxes, confs, clss = trt_yolo.detect(im0, yolo_conf_th)
+                t2_yolo = time_synchronized() 
+                # Draw yolo ten
+                im0 = vis.draw_bboxes(im0, boxes, confs, clss)  
+
+                # local parameter 
+                face_max = 0
+                alert_flag = 1
+                driver_face_roi = []
+                driver_nose_roi = []
+
+                # Text show
+                next_txt_height = 35
+
+                for bb, cf, cl in zip(boxes, confs, clss): 
+                    if cls_dict[cl] == 'seatbelt':
+                        seatbelt_cnt += 1
+                    elif cls_dict[cl] == 'phone':
+                        phone_cnt += 1
+                    elif cls_dict[cl] == 'smoke':
+                        smoke_cnt += 1
+                    elif cls_dict[cl] == 'face':
+                        bb = [int(b) for b in bb]
+                        face_area = (bb[2] - bb[0])*(bb[3] - bb[1])
+                        if face_area > face_max :
+                            face_max = face_area
+                            driver_face_roi = bb
+                    elif cls_dict[cl] == 'nose':
+                        bb = [int(b) for b in bb]
+                        driver_nose_roi = bb
+
+                if len(driver_face_roi) == 0:
+                    break
+
+                if len(driver_nose_roi) == 0:
+                    nose_point = (int((driver_face_roi[0]+driver_face_roi[2])/2),
+                                    int((driver_face_roi[1]+driver_face_roi[3])/2))
+                else :
+                    nose_point = (int((driver_nose_roi[0]+driver_nose_roi[2])/2),
+                                    int((driver_nose_roi[1]+driver_nose_roi[3])/2))
+                    
+                # 6D RepNet
+                if post_flag[1]:
+                    im0,y_pred_deg,p_pred_deg,r_pred_deg = alg_6DRepNet(im0,driver_face_roi,model_6DRepNet,device,nose_point)
+
+                # icon
+                if post_flag[2]:
+                    im0 = icon_alg(im0,icon_flag)
+
+                # update fps
+                mode1_t1 = time.time()
+                fps = 1.0 / (mode1_t1 - mode1_t0)
+            
+            if len(det) and mode == 0:
                 # Rescale boxes from img_size to im0 size
                 scale_coords(img.shape[2:], det[:, :4], im0.shape, kpt_label=False)
                 scale_coords(img.shape[2:], det[:, 6:], im0.shape, kpt_label=kpt_label, step=3)
@@ -246,8 +329,8 @@ def detect(opt):
 
                 elif kpt_label == 36:
                     if len(coordinate[14]) == 1:
-                        nose_point = ((driver_face_roi[0]+driver_face_roi[2])/2,
-                                    (driver_face_roi[1]+driver_face_roi[3])/2)
+                        nose_point = (int((driver_face_roi[0]+driver_face_roi[2])/2),
+                                    int((driver_face_roi[1]+driver_face_roi[3])/2))
                     else :
                         nose_point = coordinate[14]
 
@@ -263,41 +346,8 @@ def detect(opt):
                 if post_flag[2]:
                     im0 = icon_alg(im0,icon_flag)
 
-                if show_text:
-                    if post_flag[0]:
-                        pitch_str = str(round(pitch.item(), 3))
-                        yaw_str = str(-(round(yaw.item(), 3)))
-                        roll_str = str(round(roll.item(), 3))
-                        #(img, text, org, fontFace, fontScale, color, thickness, lineType)
-                        cv2.putText(im0,"HEAD-POSE PNP",(0,next_txt_height), 
-                                    cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
-                        next_txt_height += gap_txt_height
-                        cv2.putText(im0,"roll:"+roll_str,(0,next_txt_height), 
-                                    cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
-                        next_txt_height += gap_txt_height
-                        cv2.putText(im0,"yaw:"+yaw_str,(0,next_txt_height), 
-                                    cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-                        next_txt_height += gap_txt_height
-                        cv2.putText(im0,"pitch:"+pitch_str,(0,next_txt_height), 
-                                    cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
-                        next_txt_height += gap_txt_height
-                    if post_flag[1]:
-                        p_pred_str = str(round(p_pred_deg[0].item(), 3))
-                        y_pred_str = str(-(round(y_pred_deg[0].item(), 3)))
-                        r_pred_str = str(round(r_pred_deg[0].item(), 3))
-                        #(img, text, org, fontFace, fontScale, color, thickness, lineType)
-                        cv2.putText(im0,"HEAD-POSE 6D",(0,next_txt_height), 
-                                    cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 0), 2)
-                        next_txt_height += gap_txt_height
-                        cv2.putText(im0,"roll:"+r_pred_str,(0,next_txt_height), 
-                                    cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
-                        next_txt_height += gap_txt_height
-                        cv2.putText(im0,"yaw:"+y_pred_str,(0,next_txt_height), 
-                                    cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-                        next_txt_height += gap_txt_height
-                        cv2.putText(im0,"pitch:"+p_pred_str,(0,next_txt_height), 
-                                    cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
-                        next_txt_height += gap_txt_height
+                # update fps
+                fps = 1.0 / (t3 - t1)
 
                 # eye
                 # eye_imgL = im0[coordinate[1][1]:coordinate[5][1],coordinate[0][0]:coordinate[3][0],:]
@@ -311,6 +361,7 @@ def detect(opt):
                 # im0[0:50,0:100,:] = cv2.resize(eye_imgL,(100,50))
                 # im0[0:50,100:200,:] = cv2.resize(eye_imgL,(100,50))
 
+
                 # Write results
                 for det_index, (*xyxy, conf, cls) in enumerate(reversed(det[:,:6])):
                     if save_txt:  # Write to file
@@ -322,7 +373,7 @@ def detect(opt):
                     if save_img or opt.save_crop or view_img:  # Add bbox to image
                         c = int(cls)  # integer class
                         label = None if opt.hide_labels else (names[c] if opt.hide_conf else f'{names[c]} {conf:.2f}')
-                        plot_one_box(xyxy, im0, label=label, color=colors[int(cls)], line_thickness=opt.line_thickness)
+                        plot_one_box(xyxy, im0, label=label, color=colors[c], line_thickness=opt.line_thickness)
                         if opt.save_crop:
                             save_one_box(xyxy, im0s, file=save_dir / 'crops' / names[c] / f'{p.stem}.jpg', BGR=True)
 
@@ -332,6 +383,43 @@ def detect(opt):
                         line = (conf, cls,  *xyxy) if opt.save_conf else (cls, *xyxy)  # label format
                         with open(txt_path + '.txt', 'a') as f:
                             f.write(('%g ' * len(line)).rstrip() % line + '\n')
+
+            if show_text:
+                if post_flag[0]:
+                    pitch_str = str(round(pitch.item(), 3))
+                    yaw_str = str(-(round(yaw.item(), 3)))
+                    roll_str = str(round(roll.item(), 3))
+                    #(img, text, org, fontFace, fontScale, color, thickness, lineType)
+                    cv2.putText(im0,"HEAD-POSE PNP",(0,next_txt_height), 
+                                cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
+                    next_txt_height += gap_txt_height
+                    cv2.putText(im0,"roll:"+roll_str,(0,next_txt_height), 
+                                cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
+                    next_txt_height += gap_txt_height
+                    cv2.putText(im0,"yaw:"+yaw_str,(0,next_txt_height), 
+                                cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+                    next_txt_height += gap_txt_height
+                    cv2.putText(im0,"pitch:"+pitch_str,(0,next_txt_height), 
+                                cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+                    next_txt_height += gap_txt_height
+                    
+                if post_flag[1]:
+                    p_pred_str = str(round(p_pred_deg[0].item(), 3))
+                    y_pred_str = str(-(round(y_pred_deg[0].item(), 3)))
+                    r_pred_str = str(round(r_pred_deg[0].item(), 3))
+                    #(img, text, org, fontFace, fontScale, color, thickness, lineType)
+                    cv2.putText(im0,"HEAD-POSE 6D",(0,next_txt_height), 
+                                cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 0), 2)
+                    next_txt_height += gap_txt_height
+                    cv2.putText(im0,"roll:"+r_pred_str,(0,next_txt_height), 
+                                cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
+                    next_txt_height += gap_txt_height
+                    cv2.putText(im0,"yaw:"+y_pred_str,(0,next_txt_height), 
+                                cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+                    next_txt_height += gap_txt_height
+                    cv2.putText(im0,"pitch:"+p_pred_str,(0,next_txt_height), 
+                                cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+                    next_txt_height += gap_txt_height
 
             # Print time (inference + NMS)
             print(f'{s}Done. ({(1E3 * (t2 - t1)):.1f}ms) Inference, ({(1E3 * (t3 - t2)):.1f}ms) NMS')
@@ -346,7 +434,6 @@ def detect(opt):
 
             # Stream results
             if view_img:
-                fps = 1.0 / (t3 - t1)
                 im0 = show_fps(im0, fps)
                 cv2.imshow(window_name, im0)
                 key = cv2.waitKey(1)
@@ -359,11 +446,11 @@ def detect(opt):
                     print("")
                     cv2.destroyAllWindows()
                     frame_cnt -= 1
-                    print('frame_cnt', frame_cnt)
-                    print(f'Average Inference times:({(inference_time_nms/frame_cnt):.3f}seconds)')
-                    total_cal = time.time() - t0
-                    print(f'Done. ({total_cal:.3f}s)')
-                    print(f'Average FPS : ({(frame_cnt + 1)/total_cal:.3f}frame/seconds)')
+                    # print('frame_cnt', frame_cnt)
+                    # print(f'Average Inference times:({(inference_time_nms/frame_cnt):.3f}seconds)')
+                    # total_cal = time.time() - t0
+                    # print(f'Done. ({total_cal:.3f}s)')
+                    # print(f'Average FPS : ({(frame_cnt + 1)/total_cal:.3f}frame/seconds)')
 
                     return 0
                 

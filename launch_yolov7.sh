@@ -52,11 +52,13 @@ echo [6]: yolov7-lite-s-Mouth+own+mirrir-34lmk-revise-2200epochs
 echo ----------------
 echo [7]: yolov7-tiny-Mouth+own+mirrir-34lmk-revise-2200epochs
 echo ----------------
-echo [8]: yolov7-lite-t-own-revise-34lmk-5cs-600epochs
+echo [8]: 
 echo ----------------
 echo [9]: yolov7-lite-t-Mouth+own+mirrir+50cm-34lmk-revise-2200epochs
 echo ----------------
 echo [10]: yolov7-lite-t-Mouth+own+mirrir+6cs-34lmk-revise-2200epochs
+echo ----------------
+echo [11]: yolov7-lite-t-Mouth+own+mirrir+7cs-34lmk-revise-2200epochs
 echo ----------------
 echo [n]: None
 echo -n "Press enter to start it:"
@@ -95,19 +97,16 @@ if [ $MY_Weights -eq 7 ] ; then
     Weights='yolov7-tiny-Mouth+own+mirrir-34lmk-revise-2200epochs/best.pt' 
     kpt=34
 fi 
-if [ $MY_Weights -eq 8 ] ; then
-    Weights='yolov7-lite-t-own-revise-34lmk-5cs-600epochs/best.pt' 
-    kpt=34
-
-    # Weights='yolov7-lite-t-Mouth+own+mirrir-36lmk-5cs-1200epochs/best.pt'
-    # kpt=36
-fi 
 if [ $MY_Weights -eq 9 ] ; then
     Weights='yolov7-lite-t-Mouth+own+mirrir+50cm-34lmk-revise-2200epochs/best.pt' 
     kpt=34
 fi 
 if [ $MY_Weights -eq 10 ] ; then
     Weights='yolov7-lite-t-Mouth+own+mirrir+6cs-34lmk-revise-2200epochs/best.pt' 
+    kpt=34
+fi 
+if [ $MY_Weights -eq 11 ] ; then
+    Weights='yolov7-lite-t+own+mouth+mirrir+7cs-34lmk-revise-2200epochs/best.pt' 
     kpt=34
 fi 
 

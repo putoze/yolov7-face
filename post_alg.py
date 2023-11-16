@@ -43,16 +43,6 @@ model_points = np.array([
                             (150.0, -150.0, -125.0)      # Right mouth corner
                         ])
 
-    # 3D model points.
-    # model_points = np.array([
-    #     (0.0, 0.0, 0.0),  # Nose tip
-    #     (0, -63.6, -12.5),  # Chin
-    #     (-43.3, 32.7, -26),  # Left eye, left corner
-    #     (43.3, 32.7, -26),  # Right eye, right corner
-    #     (-28.9, -28.9, -24.1),  # Left Mouth corner
-    #     (28.9, -28.9, -24.1)  # Right mouth corner
-    # ])
-
 def fitEllipse(input_img,flag_list):
     target_img = None
 
@@ -216,7 +206,7 @@ def draw_yolo_ellipse_point(img,ellipse_points,center_point):
     return img_out
 
         
-def alert_alg(im0,kpt_label,coordinate,nose_point,alert_flag):
+def headpose_alg(im0,coordinate,nose_point,alert_flag):
 
     # headpose
     size = im0.shape[:2]
@@ -231,20 +221,12 @@ def alert_alg(im0,kpt_label,coordinate,nose_point,alert_flag):
                     
     dist_coeffs = np.zeros((4,1)) # Assuming no lens distortion
 
-    if kpt_label == 34:
-        image_points = np.array([coordinate[12],
-                                coordinate[33],
-                                coordinate[0],
-                                coordinate[9],
-                                coordinate[13],
-                                coordinate[19]], dtype="double")
-    elif kpt_label == 36:
-        image_points = np.array([coordinate[14],
-                                coordinate[35],
-                                coordinate[0],
-                                coordinate[10],
-                                coordinate[15],
-                                coordinate[21]], dtype="double")
+    image_points = np.array([coordinate[12],
+                             coordinate[33],
+                             coordinate[0],
+                             coordinate[9],
+                             coordinate[13],
+                             coordinate[19]], dtype="double")
 
     (success, rotation_vector, translation_vector) = cv2.solvePnP(model_points, image_points, camera_matrix, dist_coeffs, flags=cv2.SOLVEPNP_ITERATIVE)
 
@@ -268,16 +250,10 @@ def alert_alg(im0,kpt_label,coordinate,nose_point,alert_flag):
     # Alert
     if alert_flag:
         coordinate_np = np.array(coordinate)
-        if kpt_label == 34:
-            leftEye = coordinate_np[0:6]
-            rightEye = coordinate_np[6:12]
-            distance = lip_distance(coordinate_np[13:33])
-            lip = coordinate_np[13:25]
-        elif kpt_label == 36:
-            leftEye = coordinate_np[0:6]
-            rightEye = coordinate_np[7:13]
-            distance = lip_distance(coordinate_np[15:35])
-            lip = coordinate_np[15:27]
+        leftEye = coordinate_np[0:6]
+        rightEye = coordinate_np[6:12]
+        distance = lip_distance(coordinate_np[13:33])
+        lip = coordinate_np[13:25]
 
         # EAR
         ear = final_ear(leftEye,rightEye)
@@ -418,3 +394,120 @@ def icon_alg(im0,icon_flag):
 
     return im0
 
+
+
+def gaze_estimate(frame, coordinate, nose_point, pupil_left, pupil_right):
+    """
+    The gaze function gets an image and face landmarks from mediapipe framework.
+    The function draws the gaze direction into the frame.
+    """
+
+    '''
+    2D image points.
+    relative takes mediapipe points that is normalized to [-1, 1] and returns image points
+    at (x,y) format
+    '''
+    image_points = np.array([
+        coordinate[12], # Nose tip
+        coordinate[33], # Chin
+        coordinate[0] , # Left eye, left corner
+        coordinate[9] , # Right eye, right corner
+        coordinate[13], # Left Mouth corner
+        coordinate[19]  # Right mouth corner
+        ], dtype="double")
+    '''
+    2D image points.
+    relativeT takes mediapipe points that is normalized to [-1, 1] and returns image points
+    at (x,y,0) format
+    '''
+    image_points1 = np.array([
+        (coordinate[12][0],coordinate[12][1],0),  # Nose tip
+        (coordinate[33][0],coordinate[33][1],0),  # Chin
+        (coordinate[0] [0],coordinate[0] [1],0),  # Left eye, left corner
+        (coordinate[9] [0],coordinate[9] [1],0),  # Right eye, right corner
+        (coordinate[13][0],coordinate[13][1],0),  # Left Mouth corner
+        (coordinate[19][0],coordinate[19][1],0)   # Right mouth corner
+    ], dtype="double")
+
+    # 3D model points.
+    model_points_v2 = np.array([
+        (0.0, 0.0, 0.0),  # Nose tip
+        (0, -63.6, -12.5),  # Chin
+        (-43.3, 32.7, -26),  # Left eye, left corner
+        (43.3, 32.7, -26),  # Right eye, right corner
+        (-28.9, -28.9, -24.1),  # Left Mouth corner
+        (28.9, -28.9, -24.1)  # Right mouth corner
+    ])
+
+    '''
+    3D model eye points
+    The center of the eye ball
+    '''
+    Eye_ball_center_right = np.array([[-29.05], [32.7], [-39.5]])
+    Eye_ball_center_left = np.array([[29.05], [32.7], [-39.5]])  # the center of the left eyeball as a vector.
+
+    '''
+    camera matrix estimation
+    '''
+    focal_length = frame.shape[1]
+    center = (frame.shape[1] / 2, frame.shape[0] / 2)
+    camera_matrix = np.array(
+        [[focal_length, 0, center[0]],
+         [0, focal_length, center[1]],
+         [0, 0, 1]], dtype="double"
+    )
+
+    dist_coeffs = np.zeros((4, 1))  # Assuming no lens distortion
+    (success, rotation_vector, translation_vector) = cv2.solvePnP(model_points_v2, image_points, camera_matrix,
+                                                                  dist_coeffs, flags=cv2.SOLVEPNP_ITERATIVE)
+
+    rvec_matrix = cv2.Rodrigues(rotation_vector)[0]
+    proj_matrix = np.hstack((rvec_matrix, translation_vector))
+    eulerAngles = cv2.decomposeProjectionMatrix(proj_matrix)[6]
+
+    yaw = eulerAngles[1]
+    if eulerAngles[0] > 0:
+        pitch =  180 - eulerAngles[0]
+    else :
+        pitch =  -(180 + eulerAngles[0])
+    roll  =  eulerAngles[2]
+
+    height, width = frame.shape[:2]
+    tdx = width - 70
+    tdy = 70
+
+    # 2d pupil location
+    if len(pupil_left) != 0:
+        left_pupil = pupil_left[4]
+    if len(pupil_right) != 0:
+        right_pupil = pupil_right[4]
+
+    # Transformation between image point to world point
+    _, transformation, _ = cv2.estimateAffine3D(image_points1, model_points_v2)  # image to world transformation
+
+    utils_with_6D.draw_axis(frame,yaw,pitch,roll,tdx,tdy, size = 50)
+    utils_with_6D.draw_gaze_6D(nose_point,frame,yaw,pitch,color=(0, 255, 255))
+
+    if transformation is not None and len(pupil_left) != 0:  # if estimateAffine3D secsseded
+        # project pupil image point into 3d world point 
+        pupil_world_cord = transformation @ np.array([[left_pupil[0], left_pupil[1], 0, 1]]).T
+
+        # 3D gaze point (10 is arbitrary value denoting gaze distance)
+        S = Eye_ball_center_left + (pupil_world_cord - Eye_ball_center_left) * 10
+
+        # Project a 3D gaze direction onto the image plane.
+        (eye_pupil2D, _) = cv2.projectPoints((int(S[0]), int(S[1]), int(S[2])), rotation_vector,
+                                             translation_vector, camera_matrix, dist_coeffs)
+        # project 3D head pose into the image plane
+        (head_pose, _) = cv2.projectPoints((int(pupil_world_cord[0]), int(pupil_world_cord[1]), int(40)),
+                                           rotation_vector,
+                                           translation_vector, camera_matrix, dist_coeffs)
+        # correct gaze for head rotation
+        gaze = left_pupil + (eye_pupil2D[0][0] - left_pupil) - (head_pose[0][0] - left_pupil)
+
+        # Draw gaze line into screen
+        p1 = (int(left_pupil[0]), int(left_pupil[1]))
+        p2 = (int(gaze[0]), int(gaze[1]))
+        cv2.line(frame, p1, p2, (0, 0, 255), 2)
+    
+    return frame,yaw,pitch,roll

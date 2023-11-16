@@ -18,7 +18,7 @@ from utils.plots import plot_one_box, show_fps, plot_kpts
 from utils.torch_utils import select_device, load_classifier, time_synchronized
 
 # self add
-from post_alg import fitEllipse, alert_alg, alg_6DRepNet, icon_alg
+from post_alg import fitEllipse, headpose_alg, alg_6DRepNet, icon_alg, gaze_estimate
 
 ## 6D RepNet 
 from RepNet_6D.model_6DRepNet import SixDRepNet
@@ -150,7 +150,7 @@ def detect(opt):
 
     # flag
     icon_flag = [0,0,0] # seatbelt, phone, smoke
-    post_flag = [0,1,1] # alert, 6D, icon
+    post_flag = [1,0,1] # alert, 6D, icon
 
     t0 = time.time()
     for path, img, im0s, vid_cap in dataset:
@@ -262,6 +262,9 @@ def detect(opt):
                 driver_face_roi = []
                 driver_kpts = []
                 coordinate = [(0,0) for kid in range(kpt_label)]
+                pupil = []
+                pupil_left = []
+                pupil_right = []
 
                 # Text show
                 next_txt_height = 35
@@ -282,6 +285,9 @@ def detect(opt):
                         phone_cnt += 1
                     elif names[int(cls)] == 'smoke' :
                         smoke_cnt += 1
+                    elif names[int(cls)] == 'pupil' :
+                        bb = [int(x) for x in xyxy]
+                        pupil.append(bb)
 
                 # object
                 if frame_cnt % max_seatbelt_cnt == 0:
@@ -320,23 +326,30 @@ def detect(opt):
                 plot_kpts(im0,coordinate)
 
                 # find nose point
-                if kpt_label == 34:
-                    if len(coordinate[12]) == 1:
-                        nose_point = ((driver_face_roi[0]+driver_face_roi[2])/2,
-                                    (driver_face_roi[1]+driver_face_roi[3])/2)
-                    else :
-                        nose_point = coordinate[12]
-
-                elif kpt_label == 36:
-                    if len(coordinate[14]) == 1:
-                        nose_point = (int((driver_face_roi[0]+driver_face_roi[2])/2),
-                                    int((driver_face_roi[1]+driver_face_roi[3])/2))
-                    else :
-                        nose_point = coordinate[14]
+                if len(coordinate[12]) == 1:
+                    nose_point = ((driver_face_roi[0]+driver_face_roi[2])/2,
+                                (driver_face_roi[1]+driver_face_roi[3])/2)
+                else :
+                    nose_point = coordinate[12]
+                
+                # find pupil roi
+                for bb in pupil:
+                    center = ((bb[0]+bb[2])/2,(bb[3]+bb[1])/2) 
+                    if center[0] < nose_point[0] :
+                        if center[0] < coordinate[3][0] and center[0] > coordinate[0][0] \
+                    and center[1] > coordinate[1][1] and center[1] < coordinate[5][1] :
+                            pupil_left = bb
+                            pupil_left.append(center)
+                    else:
+                        if center[0] < coordinate[9][0] and center[0] > coordinate[6][0] \
+                    and center[1] > coordinate[7][1] and center[1] < coordinate[11][1] :
+                            pupil_right = bb
+                            pupil_right.append(center)
 
                 # alert
                 if post_flag[0]:
-                    im0,yaw,pitch,roll = alert_alg(im0,kpt_label,coordinate,nose_point,alert_flag)
+                    #im0,yaw,pitch,roll = headpose_alg(im0,kpt_label,coordinate,nose_point,alert_flag)
+                    im0,yaw,pitch,roll = gaze_estimate(im0, coordinate, nose_point, pupil_left, pupil_right)
 
                 # 6D RepNet
                 if post_flag[1]:
@@ -437,7 +450,6 @@ def detect(opt):
                 im0 = show_fps(im0, fps)
                 cv2.imshow(window_name, im0)
                 key = cv2.waitKey(1)
-                # cv2.imshow(str(p), im0)
                 if key == 27 :  # ESC key: quit program 
                     print("")
                     print("-------------------------------")

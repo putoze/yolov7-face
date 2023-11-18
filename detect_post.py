@@ -450,19 +450,21 @@ def detect(opt):
                 im0 = show_fps(im0, fps)
                 cv2.imshow(window_name, im0)
                 key = cv2.waitKey(1)
-                if key == 27 :  # ESC key: quit program 
+                if key == 27 :  # ESC key: quit program  # or frame_cnt == 500
                     print("")
                     print("-------------------------------")
                     print("------ See You Next Time ------")
                     print("-------------------------------")
                     print("")
                     cv2.destroyAllWindows()
-                    frame_cnt -= 1
-                    # print('frame_cnt', frame_cnt)
+
+                    total_cal = time.time() - t0
+                    print('frame_cnt', frame_cnt)
+                    print(f'Done. ({total_cal:.3f}s)')
+                    print(f'Average FPS : ({frame_cnt/total_cal:.3f}frame/seconds)')
+                    # frame_cnt -= 1
                     # print(f'Average Inference times:({(inference_time_nms/frame_cnt):.3f}seconds)')
-                    # total_cal = time.time() - t0
-                    # print(f'Done. ({total_cal:.3f}s)')
-                    # print(f'Average FPS : ({(frame_cnt + 1)/total_cal:.3f}frame/seconds)')
+
 
                     return 0
                 

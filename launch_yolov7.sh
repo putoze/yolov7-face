@@ -52,9 +52,9 @@ echo [6]: yolov7-lite-s-Mouth+own+mirrir-34lmk-revise-2200epochs
 echo ----------------
 echo [7]: yolov7-tiny-Mouth+own+mirrir-34lmk-revise-2200epochs
 echo ----------------
-echo [8]: 
+echo [8]: yolov7-lite-t+own+mouth+7cs-34lmk-revise-600epochs
 echo ----------------
-echo [9]: yolov7-lite-t-Mouth+own+mirrir+50cm-34lmk-revise-2200epochs
+echo [9]: 300W
 echo ----------------
 echo [10]: yolov7-lite-t-Mouth+own+mirrir+6cs-34lmk-revise-2200epochs
 echo ----------------
@@ -97,8 +97,12 @@ if [ $MY_Weights -eq 7 ] ; then
     Weights='yolov7-tiny-Mouth+own+mirrir-34lmk-revise-2200epochs/best.pt' 
     kpt=34
 fi 
+if [ $MY_Weights -eq 8 ] ; then
+    Weights='yolov7-lite-t+own+mouth+7cs-34lmk-revise-600epochs/best.pt' 
+    kpt=34
+fi 
 if [ $MY_Weights -eq 9 ] ; then
-    Weights='yolov7-lite-t-Mouth+own+mirrir+50cm-34lmk-revise-2200epochs/best.pt' 
+    Weights='300W/best.pt' 
     kpt=34
 fi 
 if [ $MY_Weights -eq 10 ] ; then

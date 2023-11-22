@@ -189,8 +189,58 @@ def detect(opt):
             txt_path = str(save_dir / 'labels' / p.stem) + ('' if dataset.mode == 'image' else f'_{frame}')  # img.txt
             s += '%gx%g ' % img.shape[2:]  # print string
             gn = torch.tensor(im0.shape)[[1, 0, 1, 0]]  # normalization gain whwh
+
+            mode = 0
+            if mode == 1:
+                mode1_t0 = time.time()
+                t1_yolo = time_synchronized() 
+                boxes, confs, clss = trt_yolo.detect(im0, yolo_conf_th)
+                t2_yolo = time_synchronized() 
+                # Draw yolo ten
+                im0 = vis.draw_bboxes(im0, boxes, confs, clss)  
+
+                # local parameter 
+                face_max = 0
+                alert_flag = 1
+                driver_face_roi = []
+                driver_nose_roi = []
+
+                # Text show
+                next_txt_height = 35
+
+                for bb, cf, cl in zip(boxes, confs, clss): 
+                    if cls_dict[cl] == 'seatbelt':
+                        seatbelt_cnt += 1
+                    elif cls_dict[cl] == 'phone':
+                        phone_cnt += 1
+                    elif cls_dict[cl] == 'smoke':
+                        smoke_cnt += 1
+                    elif cls_dict[cl] == 'face':
+                        bb = [int(b) for b in bb]
+                        face_area = (bb[2] - bb[0])*(bb[3] - bb[1])
+                        if face_area > face_max :
+                            face_max = face_area
+                            driver_face_roi = bb
+                    elif cls_dict[cl] == 'nose':
+                        bb = [int(b) for b in bb]
+                        driver_nose_roi = bb
+
+                if len(driver_face_roi) == 0:
+                    break
+                    
+                # 6D RepNet
+                if post_flag[1]:
+                    im0,y_pred_deg,p_pred_deg,r_pred_deg = alg_6DRepNet(im0,driver_face_roi,model_6DRepNet,device,nose_point)
+
+                # icon
+                if post_flag[2]:
+                    im0 = icon_alg(im0,icon_flag)
+
+                # update fps
+                mode1_t1 = time.time()
+                fps = 1.0 / (mode1_t1 - mode1_t0)
             
-            if len(det):
+            if len(det) and mode == 0:
                 # Rescale boxes from img_size to im0 size
                 scale_coords(img.shape[2:], det[:, :4], im0.shape, kpt_label=False)
                 scale_coords(img.shape[2:], det[:, 6:], im0.shape, kpt_label=kpt_label, step=3)
@@ -290,7 +340,7 @@ def detect(opt):
 
                 # 6D RepNet
                 if post_flag[1]:
-                    im0,y_pred_deg,p_pred_deg,r_pred_deg = alg_6DRepNet(im0,driver_face_roi,model_6DRepNet,device,coordinate[12])
+                    im0,y_pred_deg,p_pred_deg,r_pred_deg = alg_6DRepNet(im0,driver_face_roi,model_6DRepNet,device,nose_point)
 
                 # update fps
                 fps = 1.0 / (t3 - t1)

@@ -216,7 +216,7 @@ def draw_yolo_ellipse_point(img,ellipse_points,center_point):
     return img_out
 
         
-def headpose_alg(im0,coordinate,nose_point,alert_flag):
+def headpose_alg(im0,coordinate,alert_flag):
 
     # headpose
     size = im0.shape[:2]
@@ -233,10 +233,10 @@ def headpose_alg(im0,coordinate,nose_point,alert_flag):
 
     image_points = np.array([coordinate[12],
                              coordinate[33],
-                             coordinate[0],
                              coordinate[9],
-                             coordinate[13],
-                             coordinate[19]], dtype="double")
+                             coordinate[0],
+                             coordinate[19],
+                             coordinate[13]], dtype="double")
 
     (success, rotation_vector, translation_vector) = cv2.solvePnP(model_points, image_points, camera_matrix, dist_coeffs, flags=cv2.SOLVEPNP_ITERATIVE)
 
@@ -244,18 +244,15 @@ def headpose_alg(im0,coordinate,nose_point,alert_flag):
     proj_matrix = np.hstack((rvec_matrix, translation_vector))
     eulerAngles = cv2.decomposeProjectionMatrix(proj_matrix)[6]
 
-    yaw = eulerAngles[1]
-    if eulerAngles[0] > 0:
-        pitch =  180 - eulerAngles[0]
-    else :
-        pitch =  -(180 + eulerAngles[0])
+    yaw   =  eulerAngles[1]
+    pitch = -eulerAngles[0]
     roll  =  eulerAngles[2]
     
     tdx = size[1] - 70
     tdy = 70
 
     utils_with_6D.draw_axis(im0,yaw,pitch,roll,tdx,tdy, size = 50)
-    utils_with_6D.draw_gaze_6D(nose_point,im0,yaw,pitch,color=(0, 255, 255))
+    utils_with_6D.draw_gaze_6D(coordinate[12],im0,yaw,pitch,color=(0, 255, 255))
 
     # Alert
     if alert_flag:
@@ -269,11 +266,18 @@ def headpose_alg(im0,coordinate,nose_point,alert_flag):
         ear = final_ear(leftEye,rightEye)
 
         # draw
+        # elleftEyeThresh = cv2.fitEllipse(leftEye)
+        # elrightEyeThresh = cv2.fitEllipse(rightEye)
+        # ellipThresh = cv2.fitEllipse(lip)
+        # cv2.ellipse(im0, elleftEyeThresh, (0, 255, 255), 2)
+        # cv2.ellipse(im0, elrightEyeThresh, (0, 255, 255), 2)
+        # cv2.ellipse(im0, ellipThresh, (0, 255, 255), 2)
+
         leftEyeHull = cv2.convexHull(leftEye)
         rightEyeHull = cv2.convexHull(rightEye)
-        cv2.drawContours(im0, [leftEyeHull], -1, (0, 255, 255), 1)
-        cv2.drawContours(im0, [rightEyeHull], -1, (0, 255, 255), 1)
-        cv2.drawContours(im0, [lip], -1, (0, 255, 255), 1)
+        cv2.drawContours(im0, [leftEyeHull], -1, (0, 255, 255), 2)
+        cv2.drawContours(im0, [rightEyeHull], -1, (0, 255, 255), 2)
+        cv2.drawContours(im0, [lip], -1, (0, 255, 255), 2)
 
         # if ear < EYE_AR_THRESH:
         #     COUNTER += 1
@@ -406,7 +410,7 @@ def icon_alg(im0,icon_flag):
 
 
 
-def gaze_estimate(frame, coordinate, nose_point, pupil_left, pupil_right):
+def gaze_estimate(frame, coordinate, pupil_left, pupil_right):
     """
     The gaze function gets an image and face landmarks from mediapipe framework.
     The function draws the gaze direction into the frame.
@@ -420,10 +424,10 @@ def gaze_estimate(frame, coordinate, nose_point, pupil_left, pupil_right):
     image_points = np.array([
         coordinate[12], # Nose tip
         coordinate[33], # Chin
-        coordinate[0] , # Left eye, left corner
-        coordinate[9] , # Right eye, right corner
-        coordinate[13], # Left Mouth corner
-        coordinate[19]  # Right mouth corner
+        coordinate[9] , # Left eye, left corner
+        coordinate[0] , # Right eye, right corner
+        coordinate[19], # Left Mouth corner
+        coordinate[13]  # Right mouth corner
         ], dtype="double")
     '''
     2D image points.
@@ -433,10 +437,10 @@ def gaze_estimate(frame, coordinate, nose_point, pupil_left, pupil_right):
     image_points1 = np.array([
         (coordinate[12][0],coordinate[12][1],0),  # Nose tip
         (coordinate[33][0],coordinate[33][1],0),  # Chin
-        (coordinate[0] [0],coordinate[0] [1],0),  # Left eye, left corner
-        (coordinate[9] [0],coordinate[9] [1],0),  # Right eye, right corner
-        (coordinate[13][0],coordinate[13][1],0),  # Left Mouth corner
-        (coordinate[19][0],coordinate[19][1],0)   # Right mouth corner
+        (coordinate[9] [0],coordinate[9] [1],0),  # Left eye, left corner
+        (coordinate[0] [0],coordinate[0] [1],0),  # Right eye, right corner
+        (coordinate[19][0],coordinate[19][1],0),  # Left Mouth corner
+        (coordinate[13][0],coordinate[13][1],0)   # Right mouth corner
     ], dtype="double")
 
     '''
@@ -465,57 +469,49 @@ def gaze_estimate(frame, coordinate, nose_point, pupil_left, pupil_right):
     proj_matrix = np.hstack((rvec_matrix, translation_vector))
     eulerAngles = cv2.decomposeProjectionMatrix(proj_matrix)[6]
 
-    yaw = eulerAngles[1]
-    if eulerAngles[0] > 0:
-        pitch =  180 - eulerAngles[0]
-    else :
-        pitch =  -(180 + eulerAngles[0])
+    yaw   =  eulerAngles[1]
+    pitch = -eulerAngles[0]
     roll  =  eulerAngles[2]
 
     height, width = frame.shape[:2]
     tdx = width - 70
     tdy = 70
 
-    # 2d pupil location
-    if len(pupil_left) != 0:
-        left_pupil = pupil_left[4]
-    if len(pupil_right) != 0:
-        right_pupil = pupil_right[4]
-
     # Transformation between image point to world point
     _, transformation, _ = cv2.estimateAffine3D(image_points1, model_points_v2)  # image to world transformation
 
     utils_with_6D.draw_axis(frame,yaw,pitch,roll,tdx,tdy, size = 50)
-    utils_with_6D.draw_gaze_6D(nose_point,frame,yaw,pitch,color=(0, 255, 255))
+    utils_with_6D.draw_gaze_6D(coordinate[12],frame,yaw,pitch,color=(0, 255, 255))
 
     if transformation is not None:  # if estimateAffine3D secsseded
         # project pupil image point into 3d world point 
         if len(pupil_left) != 0:
+            left_pupil = pupil_left[4]
             pupil_world_cord_l = transformation @ np.array([[left_pupil[0], left_pupil[1], 0, 1]]).T
 
             # 3D gaze point (10 is arbitrary value denoting gaze distance)
             S = Eye_ball_center_left + (pupil_world_cord_l - Eye_ball_center_left) * 2
 
             # Project a 3D gaze direction onto the image plane.
-            (eye_pupil2D, _) = cv2.projectPoints((int(S[0]), int(S[1]), int(S[2])), -rotation_vector,
-                                                -translation_vector, camera_matrix, dist_coeffs)
+            (eye_pupil2D, _) = cv2.projectPoints((int(S[0]), int(S[1]), int(S[2])), rotation_vector,
+                                                translation_vector, camera_matrix, dist_coeffs)
             # project 3D head pose into the image plane
             (head_pose, _) = cv2.projectPoints((int(pupil_world_cord_l[0]), int(pupil_world_cord_l[1]), int(40)),
-                                            -rotation_vector,
-                                            -translation_vector, camera_matrix, dist_coeffs)
+                                            rotation_vector, translation_vector, camera_matrix, dist_coeffs)
             # correct gaze for head rotation
             gaze = left_pupil + (eye_pupil2D[0][0] - left_pupil) - (head_pose[0][0] - left_pupil)
 
             # Draw gaze line into screen
             p1 = (int(left_pupil[0]), int(left_pupil[1]))
             p2 = (int(gaze[0]), int(gaze[1]))
-            cv2.line(frame, p1, p2, (0, 0, 255), 2)
+            cv2.arrowedLine(frame, p1, p2, (0, 0, 255), 2)
 
         if len(pupil_right) != 0:
+            right_pupil = pupil_right[4]
             pupil_world_cord_r = transformation @ np.array([[right_pupil[0], right_pupil[1], 0, 1]]).T
 
             # 3D gaze Eye_ball_center_right (10 is arbitrary value denoting gaze distance)
-            S = Eye_ball_center_left + (pupil_world_cord_r - Eye_ball_center_right) *2
+            S = Eye_ball_center_right + (pupil_world_cord_r - Eye_ball_center_right) * 2
 
             # Project a 3D gaze direction onto the image plane.
             (eye_pupil2D, _) = cv2.projectPoints((int(S[0]), int(S[1]), int(S[2])), -rotation_vector,
@@ -530,6 +526,6 @@ def gaze_estimate(frame, coordinate, nose_point, pupil_left, pupil_right):
             # Draw gaze line into screen
             p1 = (int(right_pupil[0]), int(right_pupil[1]))
             p2 = (int(gaze[0]), int(gaze[1]))
-            cv2.line(frame, p1, p2, (0, 0, 255), 2)
+            cv2.arrowedLine(frame, p1, p2, (0, 0, 255), 2)
 
     return frame,yaw,pitch,roll

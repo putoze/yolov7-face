@@ -53,6 +53,8 @@ model_points_v2 = np.array([
     (28.9, -28.9, -24.1)  # Right mouth corner
 ])
 
+YAWN_THRESH = 20
+
 def fitEllipse(input_img,flag_list):
     target_img = None
 
@@ -247,6 +249,8 @@ def headpose_alg(im0,coordinate,alert_flag):
     yaw   =  eulerAngles[1]
     pitch = -eulerAngles[0]
     roll  =  eulerAngles[2]
+
+    yawn_flag = 0
     
     tdx = size[1] - 70
     tdy = 70
@@ -266,48 +270,23 @@ def headpose_alg(im0,coordinate,alert_flag):
         ear = final_ear(leftEye,rightEye)
 
         # draw
-        # elleftEyeThresh = cv2.fitEllipse(leftEye)
-        # elrightEyeThresh = cv2.fitEllipse(rightEye)
-        # ellipThresh = cv2.fitEllipse(lip)
-        # cv2.ellipse(im0, elleftEyeThresh, (0, 255, 255), 2)
-        # cv2.ellipse(im0, elrightEyeThresh, (0, 255, 255), 2)
-        # cv2.ellipse(im0, ellipThresh, (0, 255, 255), 2)
-
         leftEyeHull = cv2.convexHull(leftEye)
         rightEyeHull = cv2.convexHull(rightEye)
-        cv2.drawContours(im0, [leftEyeHull], -1, (0, 255, 255), 2)
-        cv2.drawContours(im0, [rightEyeHull], -1, (0, 255, 255), 2)
-        cv2.drawContours(im0, [lip], -1, (0, 255, 255), 2)
+        cv2.drawContours(im0, [leftEyeHull], -1, (0, 255, 255), 1)
+        cv2.drawContours(im0, [rightEyeHull], -1, (0, 255, 255), 1)
+        cv2.drawContours(im0, [lip], -1, (0, 255, 255), 1)
 
-        # if ear < EYE_AR_THRESH:
-        #     COUNTER += 1
+        if (distance > YAWN_THRESH):
+            cv2.putText(im0, "Yawn Alert", (300, 90),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+            yawn_flag = 1
 
-        #     if COUNTER >= EYE_AR_CONSEC_FRAMES:
-        #         if alarm_status == False:
-        #             alarm_status = True
-
-        #         cv2.putText(im0, "DROWSINESS ALERT!", (10, 30),
-        #                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
-
-        # else:
-        #     COUNTER = 0
-        #     alarm_status = False
-
-        # if (distance > YAWN_THRESH):
-        #         cv2.putText(im0, "Yawn Alert", (10, 30),
-        #                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
-        #         if alarm_status2 == False and saying == False:
-        #             alarm_status2 = True
-                    
-        # else:
-        #     alarm_status2 = False
-
-        cv2.putText(im0, "EAR: {:.2f}".format(ear), (300, 30),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+        # cv2.putText(im0, "EAR: {:.2f}".format(ear), (300, 30),
+        #             cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2)
         cv2.putText(im0, "YAWN: {:.2f}".format(distance), (300, 60),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2)
         
-    return im0,yaw,pitch,roll
+    return im0,yaw,pitch,roll,yawn_flag
 
 
 def alg_6DRepNet(im0,driver_face_roi,model_6DRepNet,device,nose_point):
@@ -372,17 +351,25 @@ def icon_alg(im0,icon_flag):
     # drowsiness
     icon_loc_x = 600
     next_icon_loc_x = icon_loc_x + icon_w
-    im0[back_size:icon_h+back_size, icon_loc_x:next_icon_loc_x]  = icon_drowsiness_re
+    if icon_flag[0] == 1:
+        icon_drowsiness_re[:,:,2] = 255
+        im0[back_size:icon_h+back_size, icon_loc_x:next_icon_loc_x]  = icon_drowsiness_re
+    else:
+        im0[back_size:icon_h+back_size, icon_loc_x:next_icon_loc_x]  = icon_drowsiness_re
 
     # attentive
     icon_loc_x = next_icon_loc_x + back_size
     next_icon_loc_x = icon_loc_x + icon_w
-    im0[back_size:icon_h+back_size, icon_loc_x:next_icon_loc_x]  = icon_attentive_re
+    if icon_flag[1] == 1:
+        icon_attentive_re[:,:,2] = 255
+        im0[back_size:icon_h+back_size, icon_loc_x:next_icon_loc_x]  = icon_attentive_re
+    else:
+        im0[back_size:icon_h+back_size, icon_loc_x:next_icon_loc_x]  = icon_attentive_re
 
     # seatbelt
     icon_loc_x = next_icon_loc_x + back_size
     next_icon_loc_x = icon_loc_x + icon_w
-    if icon_flag[0] == 1:
+    if icon_flag[2] == 1:
         im0[back_size:icon_h+back_size, icon_loc_x:next_icon_loc_x]  = icon_seatbelt_re
     else:
         icon_seatbelt_re[:,:,2] = 255
@@ -391,7 +378,7 @@ def icon_alg(im0,icon_flag):
     # phone
     icon_loc_x = next_icon_loc_x + back_size
     next_icon_loc_x = icon_loc_x + icon_w
-    if icon_flag[1] == 1:
+    if icon_flag[3] == 1:
         icon_phone_re[:,:,2] = 255
         im0[back_size:icon_h+back_size, icon_loc_x:next_icon_loc_x]  = icon_phone_re
     else:
@@ -400,7 +387,7 @@ def icon_alg(im0,icon_flag):
     # smoke
     icon_loc_x = next_icon_loc_x + back_size
     next_icon_loc_x = icon_loc_x + icon_w
-    if icon_flag[2] == 1:
+    if icon_flag[4] == 1:
         icon_smoke_re[:,:,2] = 255
         im0[back_size:icon_h+back_size, icon_loc_x:next_icon_loc_x]  = icon_smoke_re
     else:

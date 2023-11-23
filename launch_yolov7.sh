@@ -46,7 +46,7 @@ echo [3]: yolov7-lite-t-Mouth+own+mirrir-34lmk-2200epochs
 echo ----------------
 echo [4]: yolov7-lite-t-Mouth+own+mirrir-revise-34lmk-2200epochs
 echo ----------------
-echo [5]: yolov7-lite-t-Mouth+own+mirrir-36lmk-revise-2200epochs
+echo [5]: yolov7-lite-s+own+mouth+7cs-34lmk-revise-600epochs
 echo ----------------
 echo [6]: yolov7-lite-s-Mouth+own+mirrir-34lmk-revise-2200epochs
 echo ----------------
@@ -86,8 +86,8 @@ if [ $MY_Weights -eq 4 ] ; then
     kpt=34
 fi 
 if [ $MY_Weights -eq 5 ] ; then
-    Weights='yolov7-lite-t-Mouth+own+mirrir-36lmk-revise-2200epochs/best.pt' 
-    kpt=36
+    Weights='yolov7-lite-s+own+mouth+7cs-34lmk-revise-600epochs/best.pt' 
+    kpt=34
 fi 
 if [ $MY_Weights -eq 6 ] ; then
     Weights='yolov7-lite-s-Mouth+own+mirrir-revise-34lmk-2200epochs/best.pt' 
@@ -243,8 +243,8 @@ if [ $MY_mode -eq 5 ] ; then
 
     python3 detect_post.py \
     --weights ../../weights/yolov7-face/$Weights \
-    --source /media/joe/Xavierssd/2023_0816_otocam_datavideo/output29.avi \
-    --conf-thres 0.2 \
+    --source /media/joe/Xavierssd/2023_0816_otocam_datavideo/output31.avi \
+    --conf-thres 0.5 \
     --iou-thres 0.5 \
     --kpt-label $kpt \
     --project ../yolov7-face-runs/video/

@@ -18,7 +18,7 @@ from utils.plots import plot_one_box, show_fps, plot_kpts
 from utils.torch_utils import select_device, load_classifier, time_synchronized
 
 # self add
-from post_alg import fitEllipse, headpose_alg, alg_6DRepNet, icon_alg, gaze_estimate
+from post_alg import fitEllipse, headpose_alg, alg_6DRepNet, icon_alg, gaze_estimate, gaze_GazeML
 
 ## 6D RepNet 
 from RepNet_6D.model_6DRepNet import SixDRepNet
@@ -315,7 +315,7 @@ def detect(opt):
                     
                     # find pupil roi
                     for bb in pupil:
-                        center = ((bb[0]+bb[2])/2,(bb[3]+bb[1])/2) 
+                        center = (int((bb[0]+bb[2])/2),int((bb[3]+bb[1])/2))
                         if center[0] < coordinate[12][0] :
                             if center[0] < coordinate[3][0] and center[0] > coordinate[0][0] \
                         and center[1] > coordinate[1][1] and center[1] < coordinate[5][1] :
@@ -330,7 +330,13 @@ def detect(opt):
                     # headpose and alert
                     if post_flag[0]:
                         im0,yaw,pitch,roll,yawn_flag = headpose_alg(im0,coordinate,alert_flag)
+                        coordinate_np = np.array(coordinate)
                         # im0,yaw,pitch,roll = gaze_estimate(im0, coordinate, nose_point, pupil_left, pupil_right)
+                        if len(pupil_left) != 0:
+                            gaze_GazeML(im0, coordinate_np[0:6], pupil_left, pitch, yaw)
+                        if len(pupil_right) != 0:
+                            gaze_GazeML(im0, coordinate_np[6:12], pupil_right, pitch, yaw)
+                        
                         if yawn_flag:
                             yawn_cnt += 1
                         else :
@@ -355,19 +361,6 @@ def detect(opt):
                     # im0[0:50,0:100,:] = cv2.resize(eye_imgL,(100,50))
                     # im0[0:50,100:200,:] = cv2.resize(eye_imgL,(100,50))
 
-
-                # update fps
-                fps = 1.0 / (t3 - t1)
-
-                # inference times
-                if frame_face != 0:
-                    inference_time_nms += t3 - t1
-
-                frame_face += 1
-
-                # Print time (inference + NMS)
-                print(f'{s}Done. ({(1E3 * (t2 - t1)):.1f}ms) Inference, ({(1E3 * (t3 - t2)):.1f}ms) NMS')
-
                 # Write results
                 for det_index, (*xyxy, conf, cls) in enumerate(reversed(det[:,:6])):
                     if save_txt:  # Write to file
@@ -379,7 +372,8 @@ def detect(opt):
                     if save_img or opt.save_crop or view_img:  # Add bbox to image
                         c = int(cls)  # integer class
                         label = None if opt.hide_labels else (names[c] if opt.hide_conf else f'{names[c]} {conf:.2f}')
-                        plot_one_box(xyxy, im0, label=label, color=colors[c], line_thickness=opt.line_thickness)
+                        if names[c] != 'pupil' :
+                            plot_one_box(xyxy, im0, label=label, color=colors[c], line_thickness=opt.line_thickness)
                         if opt.save_crop:
                             save_one_box(xyxy, im0s, file=save_dir / 'crops' / names[c] / f'{p.stem}.jpg', BGR=True)
 
@@ -389,24 +383,35 @@ def detect(opt):
                         line = (conf, cls,  *xyxy) if opt.save_conf else (cls, *xyxy)  # label format
                         with open(txt_path + '.txt', 'a') as f:
                             f.write(('%g ' * len(line)).rstrip() % line + '\n')
+            # update fps
+            fps = 1.0 / (t3 - t1)
+
+            # inference times
+            if frame_face != 0:
+                inference_time_nms += t3 - t1
+
+            frame_face += 1
+
+            # Print time (inference + NMS)
+            print(f'{s}Done. ({(1E3 * (t2 - t1)):.1f}ms) Inference, ({(1E3 * (t3 - t2)):.1f}ms) NMS')
 
         # Attentive
-        if abs(yaw) > yaw_boundary or abs(roll) > roll_boundary or abs(pitch) > pitch_boundary:
-            attentive_flag = 0
-        else:
-            attentive_flag = 1
+        # if abs(yaw) > yaw_boundary or abs(roll) > roll_boundary or abs(pitch) > pitch_boundary:
+        #     attentive_flag = 0
+        # else:
+        #     attentive_flag = 1
 
-        if attentive_flag == 0:
-            not_attentive_cnt += 1
-        else:
-            not_attentive_cnt = 0
+        # if attentive_flag == 0:
+        #     not_attentive_cnt += 1
+        # else:
+        #     not_attentive_cnt = 0
 
-        if not_attentive_cnt > max_not_attentive_cnt :
-            icon_flag[1] = 1
-            yawn_cnt = 0
-            icon_flag[0] = 0
-        else:
-            icon_flag[1] = 0
+        # if not_attentive_cnt > max_not_attentive_cnt :
+        #     icon_flag[1] = 1
+        #     yawn_cnt = 0
+        #     icon_flag[0] = 0
+        # else:
+        #     icon_flag[1] = 0
         
         # icon
         if post_flag[2]:
@@ -443,7 +448,7 @@ def detect(opt):
             im0 = show_fps(im0, fps)
             cv2.imshow(window_name, im0)
             key = cv2.waitKey(1)
-            if key == 27 :  # ESC key: quit program  # or frame_cnt == 500
+            if key == 27 or frame_cnt == 500:  # ESC key: quit program  # or frame_cnt == 500
                 print("")
                 print("-------------------------------")
                 print("------ See You Next Time ------")

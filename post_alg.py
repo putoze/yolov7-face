@@ -26,6 +26,9 @@ import RepNet_6D.utils_with_6D as utils_with_6D
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 matplotlib.use('TkAgg')
 
+# GazeML
+import GazeML.gaze_modelbased as GM
+from GazeML.gaze import draw_gaze
 
 # transformations_6D
 transformations_6D = transforms.Compose([transforms.Resize(224),
@@ -37,9 +40,9 @@ transformations_6D = transforms.Compose([transforms.Resize(224),
 model_points = np.array([
                             (0.0, 0.0, 0.0),             # Nose tip
                             (0.0, -330.0, -65.0),        # Chin
-                            (-225.0, 170.0, -135.0),     # Left eye left corner
+                            (-225.0, 170.0, -135.0),     #  eye  corner
                             (225.0, 170.0, -135.0),      # Right eye right corne
-                            (-150.0, -150.0, -125.0),    # Left Mouth corner
+                            (-150.0, -150.0, -125.0),    #  Mouth corner
                             (150.0, -150.0, -125.0)      # Right mouth corner
                         ])
 
@@ -47,9 +50,9 @@ model_points = np.array([
 model_points_v2 = np.array([
     (0.0, 0.0, 0.0),  # Nose tip
     (0, -63.6, -12.5),  # Chin
-    (-43.3, 32.7, -26),  # Left eye, left corner
+    (-43.3, 32.7, -26),  #  eye,  corner
     (43.3, 32.7, -26),  # Right eye, right corner
-    (-28.9, -28.9, -24.1),  # Left Mouth corner
+    (-28.9, -28.9, -24.1),  #  Mouth corner
     (28.9, -28.9, -24.1)  # Right mouth corner
 ])
 
@@ -516,3 +519,28 @@ def gaze_estimate(frame, coordinate, pupil_left, pupil_right):
             cv2.arrowedLine(frame, p1, p2, (0, 0, 255), 2)
 
     return frame,yaw,pitch,roll
+
+def gaze_GazeML(im0, eye, pupil, pitch, yaw ,num_iris_landmark = 8):
+
+    # define eye loc/center/length
+    eye_center = ((eye[0][0] + eye[3][0])/2,(eye[0][1] + eye[3][1])/2)
+    eye_length = eye[3][0] - eye[0][0]
+    
+    # define pupil imformation
+    radius = (int(pupil[2]-pupil[0]),int(pupil[3]-pupil[1]))
+    
+    iris_ldmks = find_yolo_ellipse_point(num_iris_landmark,pupil[4],radius)
+    im0 = draw_yolo_ellipse_point(im0,iris_ldmks,pupil[4])
+    gaze = GM.estimate_gaze_from_landmarks(iris_ldmks, pupil[4], eye_center, eye_length)
+
+    gaze = gaze.reshape(1, 2)
+
+    # gaze[0][0] = gaze[0][0]*180/np.pi
+    # gaze[0][1] = gaze[0][1]*180/np.pi
+    draw_gaze(im0, pupil[4], gaze[0],length=200)
+
+    # add headpose
+    # gaze[0][0] = gaze[0][0]*180/np.pi + pitch
+    # gaze[0][1] = gaze[0][1]*180/np.pi + yaw
+
+    # utils_with_6D.draw_gaze_6D(pupil[4],im0,gaze[0][1],gaze[0][0],color=(0,0,0))

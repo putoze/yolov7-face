@@ -28,7 +28,8 @@ matplotlib.use('TkAgg')
 
 # GazeML
 import GazeML.gaze_modelbased as GM
-from GazeML.gaze import draw_gaze
+
+from GazeML.iris_localization import IrisLocalizationModel
 
 # transformations_6D
 transformations_6D = transforms.Compose([transforms.Resize(224),
@@ -58,7 +59,7 @@ model_points_v2 = np.array([
 
 YAWN_THRESH = 20
 
-def fitEllipse(input_img,flag_list):
+def fitEllipse(input_img,flag_list,bb):
     target_img = None
 
     # Convert to grayscale if gray_flag is true
@@ -156,7 +157,9 @@ def fitEllipse(input_img,flag_list):
             return None
         
         elPupilThresh = cv2.fitEllipse(contour_pt_array)
-
+        center = (int(elPupilThresh[0][0] + bb[0]),int(elPupilThresh[0][1]) + bb[1])
+        radius = (int(elPupilThresh[1][0]),int(elPupilThresh[1][1]))
+        
         # print("elPupilThresh")
         # print("Center:",elPupilThresh[0])
         # print("Size:" ,elPupilThresh[1])
@@ -170,7 +173,7 @@ def fitEllipse(input_img,flag_list):
         
         # final_img = cv2.cvtColor(img_gray, cv2.COLOR_GRAY2RGB)
 
-        return elPupilThresh
+        return [center,radius,elPupilThresh[2]]
     else :
         return None
 
@@ -520,27 +523,30 @@ def gaze_estimate(frame, coordinate, pupil_left, pupil_right):
 
     return frame,yaw,pitch,roll
 
-def gaze_GazeML(im0, eye, pupil, pitch, yaw ,num_iris_landmark = 8):
+def gaze_GazeML(im0, eye, pupil, num_iris_landmark = 8):
 
     # define eye loc/center/length
     eye_center = ((eye[0][0] + eye[3][0])/2,(eye[0][1] + eye[3][1])/2)
     eye_length = eye[3][0] - eye[0][0]
     
     # define pupil imformation
-    radius = (int(pupil[2]-pupil[0]),int(pupil[3]-pupil[1]))
+    radius = pupil[1]
     
-    iris_ldmks = find_yolo_ellipse_point(num_iris_landmark,pupil[4],radius)
-    im0 = draw_yolo_ellipse_point(im0,iris_ldmks,pupil[4])
-    gaze = GM.estimate_gaze_from_landmarks(iris_ldmks, pupil[4], eye_center, eye_length)
+    iris_ldmks = find_yolo_ellipse_point(num_iris_landmark,pupil[0],radius)
+    im0 = draw_yolo_ellipse_point(im0,iris_ldmks,pupil[0])
+    gaze = GM.estimate_gaze_from_landmarks(iris_ldmks, pupil[0], eye_center, eye_length)
 
     gaze = gaze.reshape(1, 2)
 
-    # gaze[0][0] = gaze[0][0]*180/np.pi
-    # gaze[0][1] = gaze[0][1]*180/np.pi
-    draw_gaze(im0, pupil[4], gaze[0],length=200)
+    return gaze
 
-    # add headpose
-    # gaze[0][0] = gaze[0][0]*180/np.pi + pitch
-    # gaze[0][1] = gaze[0][1]*180/np.pi + yaw
 
-    # utils_with_6D.draw_gaze_6D(pupil[4],im0,gaze[0][1],gaze[0][0],color=(0,0,0))
+def gaze_laser(frame,eye):
+    gs = IrisLocalizationModel("weights/iris_landmark.tflite")
+    eye_lengths = int(eye[3][0] - eye[0][0])
+    eye_center = (int((eye[0][0] + eye[3][0])/2),int((eye[0][1] + eye[3][1])/2))
+
+    iris = gs.get_mesh(frame, eye_lengths, eye_center)
+    pupil, _ = gs.draw_pupil(iris, frame, thickness=1)
+
+    return pupil, eye_center

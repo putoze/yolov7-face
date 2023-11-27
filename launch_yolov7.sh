@@ -56,7 +56,7 @@ echo [8]: yolov7-lite-t-Mouth+own+mirrir-revise-34lmk-2200epochs
 echo ----------------
 echo [9]: 300W
 echo ----------------
-echo [10]: 
+echo [10]: yolov7-face+own+mouth+7cs-34lmk-revise-600epochs
 echo ----------------
 echo [11]: yolov7-lite-t-Mouth+own+mirrir+7cs-34lmk-revise-2200epochs
 echo ----------------
@@ -106,7 +106,7 @@ if [ $MY_Weights -eq 9 ] ; then
     kpt=34
 fi 
 if [ $MY_Weights -eq 10 ] ; then
-    Weights='/best.pt' 
+    Weights='yolov7-face+own+mouth+7cs-34lmk-revise-600epochs/best.pt' 
     kpt=34
 fi 
 if [ $MY_Weights -eq 11 ] ; then

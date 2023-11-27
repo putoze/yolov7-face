@@ -18,7 +18,9 @@ from utils.plots import plot_one_box, show_fps, plot_kpts
 from utils.torch_utils import select_device, load_classifier, time_synchronized
 
 # self add
-from post_alg import fitEllipse, headpose_alg, alg_6DRepNet, icon_alg, gaze_estimate, gaze_GazeML
+from post_alg import fitEllipse, headpose_alg, alg_6DRepNet, icon_alg, gaze_estimate, gaze_GazeML #gaze_laser
+from GazeML.gaze import draw_gaze
+# from GazeML.gaze_laser import *
 
 ## 6D RepNet 
 from RepNet_6D.model_6DRepNet import SixDRepNet
@@ -188,6 +190,7 @@ def detect(opt):
         pupil = []
         pupil_left = []
         pupil_right = []
+        glasses_flag = 0
 
         if icon_flag[1] == 1:
             mode1_t0 = time.time()
@@ -281,6 +284,8 @@ def detect(opt):
                     elif names[int(cls)] == 'pupil' :
                         bb = [int(x) for x in xyxy]
                         pupil.append(bb)
+                    elif names[int(cls)] == 'glasses' :
+                        glasses_flag = 1
 
                 # object
                 if frame_cnt % max_seatbelt_cnt == 0:
@@ -314,18 +319,33 @@ def detect(opt):
                     plot_kpts(im0,coordinate)
                     
                     # find pupil roi
+                    flag_list = [1,1,1,1,1,1,1]
                     for bb in pupil:
+                        x_min,y_min,x_max,y_max = bb
                         center = (int((bb[0]+bb[2])/2),int((bb[3]+bb[1])/2))
                         if center[0] < coordinate[12][0] :
                             if center[0] < coordinate[3][0] and center[0] > coordinate[0][0] \
                         and center[1] > coordinate[1][1] and center[1] < coordinate[5][1] :
-                                pupil_left = bb
-                                pupil_left.append(center)
+                                # pupil
+                                if glasses_flag:
+                                    size = (int(x_max - x_min),int(y_max - y_min))
+                                    pupil_left = [center,size,0.0]
+                                else :
+                                    pupil_imgL = im0[y_min:y_max,x_min:x_max,:]
+                                    pupil_imgL_th = fitEllipse(pupil_imgL,flag_list,bb)
+                                    if pupil_imgL_th != None:
+                                        pupil_left = pupil_imgL_th
                         else:
                             if center[0] < coordinate[9][0] and center[0] > coordinate[6][0] \
                         and center[1] > coordinate[7][1] and center[1] < coordinate[11][1] :
-                                pupil_right = bb
-                                pupil_right.append(center)
+                                if glasses_flag:
+                                    size = (int(x_max - x_min),int(y_max - y_min))
+                                    pupil_right = [center,size,0.0]
+                                else:
+                                    pupil_imgR = im0[y_min:y_max,x_min:x_max,:]
+                                    pupil_imgR_th = fitEllipse(pupil_imgR,flag_list,bb)
+                                    if pupil_imgR_th != None:
+                                        pupil_right = pupil_imgR_th
 
                     # headpose and alert
                     if post_flag[0]:
@@ -333,10 +353,21 @@ def detect(opt):
                         coordinate_np = np.array(coordinate)
                         # im0,yaw,pitch,roll = gaze_estimate(im0, coordinate, nose_point, pupil_left, pupil_right)
                         if len(pupil_left) != 0:
-                            gaze_GazeML(im0, coordinate_np[0:6], pupil_left, pitch, yaw)
+                            gaze_left = gaze_GazeML(im0, coordinate_np[0:6], pupil_left)
+                            gaze_left[0][1] = - gaze_left[0][1]
+                            draw_gaze(im0,pupil_left[0],gaze_left[0],length=200.0)
                         if len(pupil_right) != 0:
-                            gaze_GazeML(im0, coordinate_np[6:12], pupil_right, pitch, yaw)
-                        
+                            gaze_right = gaze_GazeML(im0, coordinate_np[6:12], pupil_right)
+                            draw_gaze(im0,pupil_right[0],gaze_right[0],length=200.0)
+
+                        # pupil_laser_left,eye_center_left   = gaze_laser(im0, coordinate[0:6])
+                        # pupil_laser_right,eye_center_right = gaze_laser(im0, coordinate[6:12])
+                        # pupils_laser = np.array([pupil_laser_left, pupil_laser_right])
+
+                        # poi = [coordinate[0], coordinate[3]], [coordinate[6], coordinate[9]],  \
+                        #     pupils_laser, [eye_center_left,eye_center_right]
+                        # theta, pha, delta = calculate_3d_gaze(frame, poi)
+                                            
                         if yawn_flag:
                             yawn_cnt += 1
                         else :
@@ -347,19 +378,6 @@ def detect(opt):
                         icon_flag[0] = 1
                     else :
                         icon_flag[0] = 0
-
-
-                    # eye
-                    # eye_imgL = im0[coordinate[1][1]:coordinate[5][1],coordinate[0][0]:coordinate[3][0],:]
-                    # eye_imgR = im0[coordinate[7][1]:coordinate[11][1],coordinate[6][0]:coordinate[9][0],:]
-                    # flag_list = [1,1,1,1,1,1,1]
-                    # eye_imgL_th = fitEllipse.find_max_Thresh(eye_imgL,flag_list)
-                    # eye_imgR_th = fitEllipse.find_max_Thresh(eye_imgR,flag_list)
-                    # cv2.ellipse(eye_imgL, eye_imgL_th, (0,255,0), 1)
-                    # cv2.ellipse(eye_imgR, eye_imgR_th, (0,255,0), 1)
-
-                    # im0[0:50,0:100,:] = cv2.resize(eye_imgL,(100,50))
-                    # im0[0:50,100:200,:] = cv2.resize(eye_imgL,(100,50))
 
                 # Write results
                 for det_index, (*xyxy, conf, cls) in enumerate(reversed(det[:,:6])):
@@ -448,7 +466,7 @@ def detect(opt):
             im0 = show_fps(im0, fps)
             cv2.imshow(window_name, im0)
             key = cv2.waitKey(1)
-            if key == 27 or frame_cnt == 500:  # ESC key: quit program  # or frame_cnt == 500
+            if key == 27 :  # ESC key: quit program  # or frame_cnt == 500
                 print("")
                 print("-------------------------------")
                 print("------ See You Next Time ------")

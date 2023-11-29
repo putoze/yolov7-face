@@ -18,8 +18,9 @@ from utils.plots import plot_one_box, show_fps, plot_kpts
 from utils.torch_utils import select_device, load_classifier, time_synchronized
 
 # self add
-from post_alg import fitEllipse, headpose_alg, alg_6DRepNet, icon_alg, gaze_estimate, gaze_GazeML,alert #gaze_laser
+from post_alg import fitEllipse, headpose_alg, alg_6DRepNet, icon_alg, gaze_estimate, gaze_GazeML,alert,gaze_PFLD #gaze_laser
 from GazeML.gaze import draw_gaze
+from PFLD.models.pfld import Gaze_PFLD
 # from GazeML.gaze_laser import *
 
 ## 6D RepNet 
@@ -111,6 +112,16 @@ def detect(opt):
         model_6DRepNet.load_state_dict(saved_state_dict)
     model_6DRepNet.to(device)
     # End 6D_Repnet
+
+    # Gaze-PFLD
+    pfld_path = './checkpoint/snapshot/checkpoint_epoch_1.pth.tar'
+    pfld_checkpoint = torch.load(pfld_path, map_location=device)
+    gaze_pfld = Gaze_PFLD().to(device)
+    gaze_pfld.load_state_dict(pfld_checkpoint['gaze_pfld'])
+
+    gaze_pfld.eval()
+
+    gaze_pfld = gaze_pfld.to(device)
 
     # YOLO Trt
     category_num = 9
@@ -378,11 +389,16 @@ def detect(opt):
 
                     # gaze                    
                     if len(pupil_left) != 0:
-                        gaze_left = gaze_GazeML(im0, coordinate_np[0:6], pupil_left)
-                        draw_gaze(im0,pupil_left[0],gaze_left[0],length=200.0)
+                        # gaze_left = gaze_GazeML(im0, coordinate_np[0:6], pupil_left)
+                        # draw_gaze(im0,pupil_left[0],gaze_left[0],length=200.0)
+                        
+                        left_eye = im0[coordinate[2][1]-30:coordinate[4][1]+30,coordinate[0][0]:coordinate[3][0],:]
+                        gaze_eye_left = gaze_PFLD(left_eye,device,gaze_pfld) 
                     if len(pupil_right) != 0:
-                        gaze_right = gaze_GazeML(im0, coordinate_np[6:12], pupil_right)
-                        draw_gaze(im0,pupil_right[0],gaze_right[0],length=200.0)
+                        # gaze_right = gaze_GazeML(im0, coordinate_np[6:12], pupil_right)
+                        # draw_gaze(im0,pupil_right[0],gaze_right[0],length=200.0)
+                        right_eye = im0[coordinate[8][1]-30:coordinate[10][1]+30,coordinate[6][0]:coordinate[9][0],:]
+                        gaze_eye_right = gaze_PFLD(right_eye,device,gaze_pfld) 
 
                     # pupil_laser_left,eye_center_left   = gaze_laser(im0, coordinate[0:6])
                     # pupil_laser_right,eye_center_right = gaze_laser(im0, coordinate[6:12])

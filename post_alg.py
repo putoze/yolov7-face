@@ -3,6 +3,8 @@ import numpy as np
 import math
 import torch
 import os
+import torchvision
+
 
 # alert
 from scipy.spatial import distance as dist
@@ -555,3 +557,28 @@ def gaze_laser(frame,eye):
     pupil, _ = gs.draw_pupil(iris, frame, thickness=1)
 
     return pupil, eye_center
+
+
+def gaze_PFLD(img,device,gaze_pfld):
+    
+    transform = torchvision.transforms.Compose(
+        [torchvision.transforms.ToTensor()])
+
+    height, width = img.shape[:2]
+
+    input = cv2.resize(img, (160,112))
+    input = transform(input).unsqueeze(0).to(device)
+    landmarks, gaze = gaze_pfld(input)
+
+    pre_landmark = landmarks[0]
+    #print(pre_landmark.shape)
+    pre_landmark = pre_landmark.cpu().detach().numpy().reshape(
+        -1, 2) * [width, height]
+
+    gaze = gaze.cpu().detach().numpy()[0]
+
+    c_pos = pre_landmark[-1,:]
+
+    cv2.line(img, tuple(c_pos.astype(int)), tuple(c_pos.astype(int)+(gaze*400).astype(int)), (0,255,0), 3)
+
+    return img

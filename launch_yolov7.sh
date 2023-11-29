@@ -53,8 +53,8 @@ echo ----------------
 echo [7]: yolov7-lite-t+own+mouth+7cs-34lmk-revise-600epochs 
 echo ----------------
 echo [8]: yolov7-lite-t-Mouth+own+mirrir-revise-34lmk-2200epochs
-echo ----------------
-echo [9]: 300W
+echo ========================================================
+echo [9]: yolov7-lite-t-dwkpt-7cs-34lmk-300W-pre-600epochs
 echo ----------------
 echo [10]: yolov7-face+own+mouth+7cs-34lmk-revise-600epochs
 echo ----------------
@@ -102,7 +102,7 @@ if [ $MY_Weights -eq 8 ] ; then
     kpt=34
 fi 
 if [ $MY_Weights -eq 9 ] ; then
-    Weights='300W/best.pt' 
+    Weights='yolov7-lite-t-dwkpt-7cs-34lmk-300W-pre-600epochs/best.pt' 
     kpt=34
 fi 
 if [ $MY_Weights -eq 10 ] ; then
@@ -229,7 +229,8 @@ if [ $MY_mode -eq 4 ] ; then
     --iou-thres 0.5 \
     --source cam.txt \
     --kpt-label $kpt \
-    --project ../yolov7-face-runs/cam/
+    --project ../yolov7-face-runs/cam/ \
+    --nosave
 
 fi
 

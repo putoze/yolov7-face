@@ -18,11 +18,12 @@ from utils.plots import plot_one_box, show_fps, plot_kpts
 from utils.torch_utils import select_device, load_classifier, time_synchronized
 
 # self add
-from post_alg import fitEllipse, headpose_alg, alg_6DRepNet, icon_alg, gaze_estimate, gaze_GazeML #gaze_laser
+from post_alg import fitEllipse, headpose_alg, alg_6DRepNet, icon_alg, gaze_estimate, gaze_GazeML,alert #gaze_laser
 from GazeML.gaze import draw_gaze
 # from GazeML.gaze_laser import *
 
 ## 6D RepNet 
+from face_detection import RetinaFace
 from RepNet_6D.model_6DRepNet import SixDRepNet
 
 # YOLO Trt
@@ -36,7 +37,7 @@ window_name = 'YOLOV7-face'
 
 def detect(opt):
     source, weights, view_img, save_txt, imgsz, save_txt_tidl, kpt_label = opt.source, opt.weights, opt.view_img, opt.save_txt, opt.img_size, opt.save_txt_tidl, opt.kpt_label
-    save_img = not opt.nosave and not source.endswith('.txt')  # save inference images
+    save_img = not opt.nosave  # save inference images and not source.endswith('.txt')
     webcam = source.isnumeric() or source.endswith('.txt') or source.lower().startswith(
         ('rtsp://', 'rtmp://', 'http://', 'https://'))
 
@@ -93,6 +94,8 @@ def detect(opt):
 
 
     # 6D_Repnet
+    detector = RetinaFace(gpu_id=0)
+
     snapshot_path_6D = '../../weights/6DRepNet/6DRepNet_300W_LP_AFLW2000.pth'
     model_6DRepNet = SixDRepNet(backbone_name='RepVGG-B1g2',
                        backbone_file='',
@@ -146,7 +149,7 @@ def detect(opt):
 
     # Text show
     gap_txt_height = 35
-    show_text = 0
+    show_text = 1
 
     # drowsy
     max_drowsy_cnt = 10
@@ -162,7 +165,6 @@ def detect(opt):
 
     # flag
     icon_flag = [0,0,0,0,0] # drowsy, not attentive, seatbelt, phone, smoke
-    post_flag = [1,1,1] # headpose, 6D, icon
 
     # landmark coordinate 
     coordinate = [(0,0) for kid in range(kpt_label)]
@@ -184,45 +186,57 @@ def detect(opt):
         next_txt_height = 35
         face_max = 0
         driver_face_roi = []
-        alert_flag = 1
         steps = 3
         driver_kpts = []
         pupil = []
         pupil_left = []
         pupil_right = []
         glasses_flag = 0
+        post_flag = [0,0,0] # headpose, alert, icon
 
         if icon_flag[1] == 1:
             mode1_t0 = time.time()
-            t1_yolo = time_synchronized() 
-            boxes, confs, clss = trt_yolo.detect(im0, yolo_conf_th)
-            t2_yolo = time_synchronized() 
-            # Draw yolo ten
-            im0 = vis.draw_bboxes(im0, boxes, confs, clss)  
+            # t1_yolo = time_synchronized() 
+            # boxes, confs, clss = trt_yolo.detect(im0, yolo_conf_th)
+            # t2_yolo = time_synchronized() 
+            # # Draw yolo ten
+            # im0 = vis.draw_bboxes(im0, boxes, confs, clss)  
 
-            for bb, cf, cl in zip(boxes, confs, clss): 
-                s += f"{n} {cls_dict[cl]}{'s' * (n > 1)}, "  # add to string
-                if cls_dict[cl] == 'seatbelt':
-                    seatbelt_cnt += 1
-                elif cls_dict[cl] == 'phone':
-                    phone_cnt += 1
-                elif cls_dict[cl] == 'smoke':
-                    smoke_cnt += 1
-                elif cls_dict[cl] == 'face':
-                    bb = [int(b) for b in bb]
-                    face_area = (bb[2] - bb[0])*(bb[3] - bb[1])
-                    if face_area > face_max :
-                        face_max = face_area
-                        driver_face_roi = bb
+            # for bb, cf, cl in zip(boxes, confs, clss): 
+            #     s += f"{n} {cls_dict[cl]}{'s' * (n > 1)}, "  # add to string
+            #     if cls_dict[cl] == 'seatbelt':
+            #         seatbelt_cnt += 1
+            #     elif cls_dict[cl] == 'phone':
+            #         phone_cnt += 1
+            #     elif cls_dict[cl] == 'smoke':
+            #         smoke_cnt += 1
+            #     elif cls_dict[cl] == 'face':
+            #         bb = [int(b) for b in bb]
+            #         face_area = (bb[2] - bb[0])*(bb[3] - bb[1])
+            #         if face_area > face_max :
+            #             face_max = face_area
+            #             driver_face_roi = bb
+
+            faces = detector(im0)
+            for box, landmarks, score in faces:
+                if score < .95:
+                    continue
+                bb = [int(b) for b in box]
+                face_area = (bb[2] - bb[0])*(bb[3] - bb[1])
+                if face_area > face_max :
+                    face_max = face_area
+                    driver_face_roi = bb
 
             if len(driver_face_roi) != 0:
+                # headpose 
+                post_flag[0] = 1
+
                 # find nose position
                 nose_point = (int((driver_face_roi[0]+driver_face_roi[2])/2),
                         int((driver_face_roi[1]+driver_face_roi[3])/2))
                 
                 # 6D RepNet
-                if post_flag[1]:
-                    im0,yaw,pitch,roll = alg_6DRepNet(im0,driver_face_roi,model_6DRepNet,device,nose_point)
+                im0,yaw,pitch,roll = alg_6DRepNet(im0,driver_face_roi,model_6DRepNet,device,nose_point)
 
                 mode1_t1 = time.time()
                 frame_6D += 1
@@ -287,7 +301,7 @@ def detect(opt):
                     elif names[int(cls)] == 'glasses' :
                         glasses_flag = 1
 
-                # object
+                # ====== Object Alert ======
                 if frame_cnt % max_seatbelt_cnt == 0:
                     if seatbelt_cnt >= max_seatbelt_cnt * 0.5:
                         icon_flag[2] = 1
@@ -309,6 +323,8 @@ def detect(opt):
                     smoke_cnt = 0
 
                 if len(driver_face_roi) != 0 and len(driver_kpts) != 0:
+                    post_flag = [1,1,1] # headpose, alert, icon
+
                     # landmark points
                     for kid in range(kpt_label):
                         x_coord, y_coord = driver_kpts[steps * kid], driver_kpts[steps * kid + 1]
@@ -317,6 +333,13 @@ def detect(opt):
 
                     # draw coordinate
                     plot_kpts(im0,coordinate)
+
+                    # create coordinate np array
+                    coordinate_np = np.array(coordinate)
+
+                    # headpose
+                    if post_flag[0]:
+                        im0,yaw,pitch,roll = headpose_alg(im0,coordinate)
                     
                     # find pupil roi
                     flag_list = [1,1,1,1,1,1,1]
@@ -327,51 +350,58 @@ def detect(opt):
                             if center[0] < coordinate[3][0] and center[0] > coordinate[0][0] \
                         and center[1] > coordinate[1][1] and center[1] < coordinate[5][1] :
                                 # pupil
-                                if glasses_flag:
-                                    size = (int(x_max - x_min),int(y_max - y_min))
-                                    pupil_left = [center,size,0.0]
-                                else :
-                                    pupil_imgL = im0[y_min:y_max,x_min:x_max,:]
-                                    pupil_imgL_th = fitEllipse(pupil_imgL,flag_list,bb)
-                                    if pupil_imgL_th != None:
-                                        pupil_left = pupil_imgL_th
+                                size = (int(x_max - x_min),int(y_max - y_min))
+                                pupil_left = [center,size,roll]
+                                # if glasses_flag:
+                                #     size = (int(x_max - x_min),int(y_max - y_min))
+                                #     pupil_left = [center,size,0.0]
+                                # else :
+                                #     pupil_imgL = im0[y_min:y_max,x_min:x_max,:]
+                                #     pupil_imgL_th = fitEllipse(pupil_imgL,flag_list,bb)
+                                #     if pupil_imgL_th != None:
+                                #         pupil_left = pupil_imgL_th
                         else:
                             if center[0] < coordinate[9][0] and center[0] > coordinate[6][0] \
                         and center[1] > coordinate[7][1] and center[1] < coordinate[11][1] :
-                                if glasses_flag:
-                                    size = (int(x_max - x_min),int(y_max - y_min))
-                                    pupil_right = [center,size,0.0]
-                                else:
-                                    pupil_imgR = im0[y_min:y_max,x_min:x_max,:]
-                                    pupil_imgR_th = fitEllipse(pupil_imgR,flag_list,bb)
-                                    if pupil_imgR_th != None:
-                                        pupil_right = pupil_imgR_th
+                                # pupil
+                                size = (int(x_max - x_min),int(y_max - y_min))
+                                pupil_right = [center,size,roll]
+                                # if glasses_flag:
+                                #     size = (int(x_max - x_min),int(y_max - y_min))
+                                #     pupil_right = [center,size,0.0]
+                                # else:
+                                #     pupil_imgR = im0[y_min:y_max,x_min:x_max,:]
+                                #     pupil_imgR_th = fitEllipse(pupil_imgR,flag_list,bb)
+                                #     if pupil_imgR_th != None:
+                                #         pupil_right = pupil_imgR_th
 
-                    # headpose and alert
-                    if post_flag[0]:
-                        im0,yaw,pitch,roll,yawn_flag = headpose_alg(im0,coordinate,alert_flag)
-                        coordinate_np = np.array(coordinate)
-                        # im0,yaw,pitch,roll = gaze_estimate(im0, coordinate, nose_point, pupil_left, pupil_right)
-                        if len(pupil_left) != 0:
-                            gaze_left = gaze_GazeML(im0, coordinate_np[0:6], pupil_left)
-                            gaze_left[0][1] = - gaze_left[0][1]
-                            draw_gaze(im0,pupil_left[0],gaze_left[0],length=200.0)
-                        if len(pupil_right) != 0:
-                            gaze_right = gaze_GazeML(im0, coordinate_np[6:12], pupil_right)
-                            draw_gaze(im0,pupil_right[0],gaze_right[0],length=200.0)
 
-                        # pupil_laser_left,eye_center_left   = gaze_laser(im0, coordinate[0:6])
-                        # pupil_laser_right,eye_center_right = gaze_laser(im0, coordinate[6:12])
-                        # pupils_laser = np.array([pupil_laser_left, pupil_laser_right])
+                    # gaze                    
+                    if len(pupil_left) != 0:
+                        gaze_left = gaze_GazeML(im0, coordinate_np[0:6], pupil_left)
+                        draw_gaze(im0,pupil_left[0],gaze_left[0],length=200.0)
+                    if len(pupil_right) != 0:
+                        gaze_right = gaze_GazeML(im0, coordinate_np[6:12], pupil_right)
+                        draw_gaze(im0,pupil_right[0],gaze_right[0],length=200.0)
 
-                        # poi = [coordinate[0], coordinate[3]], [coordinate[6], coordinate[9]],  \
-                        #     pupils_laser, [eye_center_left,eye_center_right]
-                        # theta, pha, delta = calculate_3d_gaze(frame, poi)
-                                            
+                    # pupil_laser_left,eye_center_left   = gaze_laser(im0, coordinate[0:6])
+                    # pupil_laser_right,eye_center_right = gaze_laser(im0, coordinate[6:12])
+                    # pupils_laser = np.array([pupil_laser_left, pupil_laser_right])
+
+                    # poi = [coordinate[0], coordinate[3]], [coordinate[6], coordinate[9]],  \
+                    #     pupils_laser, [eye_center_left,eye_center_right]
+                    # theta, pha, delta = calculate_3d_gaze(frame, poi)
+                    
+                    # im0,yaw,pitch,roll = gaze_estimate(im0, coordinate, nose_point, pupil_left, pupil_right)
+                    
+                    # drowsy Alert 
+                    if post_flag[1] == 1:
+                        im0,yawn_flag = alert(im0,coordinate_np,glasses_flag)
                         if yawn_flag:
                             yawn_cnt += 1
                         else :
                             yawn_cnt = 0
+
 
                     # drowsy
                     if yawn_cnt > max_drowsy_cnt:
@@ -414,47 +444,47 @@ def detect(opt):
             print(f'{s}Done. ({(1E3 * (t2 - t1)):.1f}ms) Inference, ({(1E3 * (t3 - t2)):.1f}ms) NMS')
 
         # Attentive
-        # if abs(yaw) > yaw_boundary or abs(roll) > roll_boundary or abs(pitch) > pitch_boundary:
-        #     attentive_flag = 0
-        # else:
-        #     attentive_flag = 1
+        if abs(yaw) > yaw_boundary or abs(roll) > roll_boundary or abs(pitch) > pitch_boundary:
+            attentive_flag = 0
+        else:
+            attentive_flag = 1
 
-        # if attentive_flag == 0:
-        #     not_attentive_cnt += 1
-        # else:
-        #     not_attentive_cnt = 0
+        if attentive_flag == 0:
+            not_attentive_cnt += 1
+        else:
+            not_attentive_cnt = 0
 
-        # if not_attentive_cnt > max_not_attentive_cnt :
-        #     icon_flag[1] = 1
-        #     yawn_cnt = 0
-        #     icon_flag[0] = 0
-        # else:
-        #     icon_flag[1] = 0
+        if not_attentive_cnt > max_not_attentive_cnt :
+            icon_flag[1] = 1
+            yawn_cnt = 0
+            icon_flag[0] = 0
+        else:
+            icon_flag[1] = 0
         
         # icon
         if post_flag[2]:
             im0 = icon_alg(im0,icon_flag)
 
-        if show_text:
+        if show_text and post_flag[0]:
             pitch_str = str(round(pitch.item(), 3))
             yaw_str = str(-(round(yaw.item(), 3)))
             roll_str = str(round(roll.item(), 3))
             if icon_flag[1] == 0:
                 #(img, text, org, fontFace, fontScale, color, thickness, lineType)
                 cv2.putText(im0,"HEAD-POSE PNP",(0,next_txt_height), 
-                            cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
             else :
                 cv2.putText(im0,"HEAD-POSE 6D",(0,next_txt_height), 
-                            cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 0), 2)
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2)
             next_txt_height += gap_txt_height
             cv2.putText(im0,"roll:"+roll_str,(0,next_txt_height), 
-                        cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2)
             next_txt_height += gap_txt_height
             cv2.putText(im0,"yaw:"+yaw_str,(0,next_txt_height), 
-                        cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
             next_txt_height += gap_txt_height
             cv2.putText(im0,"pitch:"+pitch_str,(0,next_txt_height), 
-                        cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
             next_txt_height += gap_txt_height
 
 
@@ -503,7 +533,7 @@ def detect(opt):
                         w = int(vid_cap.get(cv2.CAP_PROP_FRAME_WIDTH))
                         h = int(vid_cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
                     else:  # stream
-                        fps, w, h = 30, im0.shape[1], im0.shape[0]
+                        fps, w, h = 10, im0.shape[1], im0.shape[0]
                         save_path += '.mp4'
                     vid_writer = cv2.VideoWriter(save_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (w, h))
                 vid_writer.write(im0)

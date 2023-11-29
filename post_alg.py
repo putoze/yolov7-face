@@ -57,7 +57,7 @@ model_points_v2 = np.array([
     (28.9, -28.9, -24.1)  # Right mouth corner
 ])
 
-YAWN_THRESH = 20
+YAWN_THRESH = 25
 
 def fitEllipse(input_img,flag_list,bb):
     target_img = None
@@ -190,11 +190,11 @@ def find_ellipse_point(num_points,elthresh):
 
     return np.array(ellipse_points)
 
-def find_yolo_ellipse_point(num_points,center,axes):
+def find_yolo_ellipse_point(num_points,center,axes,roll):
     angle_step = 360 / num_points
     ellipse_points = []
     for i in range(num_points):
-        angle_deg = angle_step * i
+        angle_deg = angle_step * i + roll
         angle_rad = np.radians(angle_deg)
         x_point = center[0] + (axes[0] / 2) * np.cos(angle_rad)
         y_point = center[1] + (axes[1] / 2) * np.sin(angle_rad)
@@ -224,7 +224,7 @@ def draw_yolo_ellipse_point(img,ellipse_points,center_point):
     return img_out
 
         
-def headpose_alg(im0,coordinate,alert_flag):
+def headpose_alg(im0,coordinate):
 
     # headpose
     size = im0.shape[:2]
@@ -255,45 +255,50 @@ def headpose_alg(im0,coordinate,alert_flag):
     yaw   =  eulerAngles[1]
     pitch = -eulerAngles[0]
     roll  =  eulerAngles[2]
-
-    yawn_flag = 0
     
     tdx = size[1] - 70
     tdy = 70
 
     utils_with_6D.draw_axis(im0,yaw,pitch,roll,tdx,tdy, size = 50)
     utils_with_6D.draw_gaze_6D(coordinate[12],im0,yaw,pitch,color=(0, 255, 255))
-
-    # Alert
-    if alert_flag:
-        coordinate_np = np.array(coordinate)
-        leftEye = coordinate_np[0:6]
-        rightEye = coordinate_np[6:12]
-        distance = lip_distance(coordinate_np[13:33])
-        lip = coordinate_np[13:25]
-
-        # EAR
-        ear = final_ear(leftEye,rightEye)
-
-        # draw
-        leftEyeHull = cv2.convexHull(leftEye)
-        rightEyeHull = cv2.convexHull(rightEye)
-        cv2.drawContours(im0, [leftEyeHull], -1, (0, 255, 255), 1)
-        cv2.drawContours(im0, [rightEyeHull], -1, (0, 255, 255), 1)
-        cv2.drawContours(im0, [lip], -1, (0, 255, 255), 1)
-
-        if (distance > YAWN_THRESH):
-            cv2.putText(im0, "Yawn Alert", (300, 90),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
-            yawn_flag = 1
-
-        # cv2.putText(im0, "EAR: {:.2f}".format(ear), (300, 30),
-        #             cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2)
-        cv2.putText(im0, "YAWN: {:.2f}".format(distance), (300, 60),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2)
         
-    return im0,yaw,pitch,roll,yawn_flag
+    return im0,yaw,pitch,roll
 
+def alert(im0,coordinate_np,glasses_flag):
+    
+    leftEye = coordinate_np[0:6]
+    rightEye = coordinate_np[6:12]
+    distance = lip_distance(coordinate_np[13:33])
+    lip = coordinate_np[13:25]
+
+    # yawn_flag
+    yawn_flag = 0
+
+    # EAR
+    ear = final_ear(leftEye,rightEye)
+
+    # draw
+    leftEyeHull = cv2.convexHull(leftEye)
+    rightEyeHull = cv2.convexHull(rightEye)
+    cv2.drawContours(im0, [leftEyeHull], -1, (0, 255, 255), 1)
+    cv2.drawContours(im0, [rightEyeHull], -1, (0, 255, 255), 1)
+    cv2.drawContours(im0, [lip], -1, (0, 255, 255), 1)
+
+    if glasses_flag:
+        cv2.putText(im0, "glasses wear", (300, 30),
+            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+
+    cv2.putText(im0, "EAR: {:.2f}".format(ear), (300, 60),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
+    cv2.putText(im0, "YAWN: {:.2f}".format(distance), (300, 90),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2)
+    
+    if (distance > YAWN_THRESH):
+        cv2.putText(im0, "Yawn Alert", (300, 120),
+            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+        yawn_flag = 1
+    
+    return im0, yawn_flag
 
 def alg_6DRepNet(im0,driver_face_roi,model_6DRepNet,device,nose_point):
 
@@ -532,7 +537,7 @@ def gaze_GazeML(im0, eye, pupil, num_iris_landmark = 8):
     # define pupil imformation
     radius = pupil[1]
     
-    iris_ldmks = find_yolo_ellipse_point(num_iris_landmark,pupil[0],radius)
+    iris_ldmks = find_yolo_ellipse_point(num_iris_landmark,pupil[0],radius,pupil[2])
     im0 = draw_yolo_ellipse_point(im0,iris_ldmks,pupil[0])
     gaze = GM.estimate_gaze_from_landmarks(iris_ldmks, pupil[0], eye_center, eye_length)
 

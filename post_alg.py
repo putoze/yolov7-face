@@ -31,8 +31,6 @@ matplotlib.use('TkAgg')
 # GazeML
 import GazeML.gaze_modelbased as GM
 
-from GazeML.iris_localization import IrisLocalizationModel
-
 # transformations_6D
 transformations_6D = transforms.Compose([transforms.Resize(224),
                                     transforms.CenterCrop(224),
@@ -241,12 +239,13 @@ def headpose_alg(im0,coordinate):
                     
     dist_coeffs = np.zeros((4,1)) # Assuming no lens distortion
 
-    image_points = np.array([coordinate[12],
-                             coordinate[33],
-                             coordinate[9],
-                             coordinate[0],
-                             coordinate[19],
-                             coordinate[13]], dtype="double")
+    image_points = np.array([coordinate[12],  # Nose tip
+                             coordinate[33],  # Chin
+                             coordinate[9],   # Left eye corner
+                             coordinate[0],   # Right eye corner
+                             coordinate[19],  # Left mouth corner
+                             coordinate[13]], # Right mouth corner
+                             dtype="double")
 
     (success, rotation_vector, translation_vector) = cv2.solvePnP(model_points, image_points, camera_matrix, dist_coeffs, flags=cv2.SOLVEPNP_ITERATIVE)
 
@@ -266,7 +265,7 @@ def headpose_alg(im0,coordinate):
         
     return im0,yaw,pitch,roll
 
-def alert(im0,coordinate_np,glasses_flag):
+def alert(im0,coordinate_np,glasses_flag,close_eye_time):
     
     leftEye = coordinate_np[0:6]
     rightEye = coordinate_np[6:12]
@@ -290,7 +289,7 @@ def alert(im0,coordinate_np,glasses_flag):
         cv2.putText(im0, "glasses wear", (300, 30),
             cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
 
-    cv2.putText(im0, "EAR: {:.2f}".format(ear), (300, 60),
+    cv2.putText(im0, "blink duration: {:.2f} s".format(close_eye_time), (300, 60),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
     cv2.putText(im0, "YAWN: {:.2f}".format(distance), (300, 90),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2)
@@ -546,18 +545,6 @@ def gaze_GazeML(im0, eye, pupil, num_iris_landmark = 8):
     gaze = gaze.reshape(1, 2)
 
     return gaze
-
-
-def gaze_laser(frame,eye):
-    gs = IrisLocalizationModel("weights/iris_landmark.tflite")
-    eye_lengths = int(eye[3][0] - eye[0][0])
-    eye_center = (int((eye[0][0] + eye[3][0])/2),int((eye[0][1] + eye[3][1])/2))
-
-    iris = gs.get_mesh(frame, eye_lengths, eye_center)
-    pupil, _ = gs.draw_pupil(iris, frame, thickness=1)
-
-    return pupil, eye_center
-
 
 def gaze_PFLD(img,device,gaze_pfld):
     

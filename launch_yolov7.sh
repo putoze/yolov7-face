@@ -36,29 +36,30 @@ fi
 
 echo ""
 echo "Hello, choose the weight you want it~"
+echo "==================== 7cs ============================"
 echo [0]: yolov7-lite-s.pt
 echo ----------------
 echo [1]: yolov7-lite-t.pt
 echo ----------------
 echo [2]: yolov7-tiny.pt
 echo ----------------
-echo [3]: yolov7-tiny+own+mouth+7cs-34lmk-revise-600epochs
+echo [3]: yolov7-tiny-7cs-34lmk-300W-pre-600epochs
 echo ----------------
-echo [4]: yolov7-tiny-Mouth+own+mirrir-34lmk-revise-2200epochs
+echo [4]: yolov7-tiny-dwkpt-7cs-34lmk-300W-pre-600epochs
 echo ----------------
 echo [5]: yolov7-lite-s+own+mouth+7cs-34lmk-revise-600epochs
 echo ----------------
-echo [6]: yolov7-lite-s-Mouth+own+mirrir-34lmk-revise-2200epochs
+echo [6]: yolov7-lite-s-dwkpt-7cs-34lmk-300W-pre-600epochs
 echo ----------------
 echo [7]: yolov7-lite-t+own+mouth+7cs-34lmk-revise-600epochs 
 echo ----------------
-echo [8]: yolov7-lite-t-Mouth+own+mirrir-revise-34lmk-2200epochs
-echo ========================================================
-echo [9]: yolov7-lite-t-dwkpt-7cs-34lmk-300W-pre-600epochs
+echo [8]: yolov7-lite-t-dwkpt-7cs-34lmk-300W-pre-600epochs
+echo "==================== 1cs ============================"
+echo [9]: yolov7-tiny-Mouth+own+mirrir-34lmk-revise-2200epochs
 echo ----------------
-echo [10]: yolov7-face+own+mouth+7cs-34lmk-revise-600epochs
+echo [10]: yolov7-lite-s-Mouth+own+mirrir-34lmk-revise-2200epochs
 echo ----------------
-echo [11]: yolov7-lite-t-Mouth+own+mirrir+7cs-34lmk-revise-2200epochs
+echo [11]: yyolov7-lite-t-Mouth+own+mirrir-revise-34lmk-2200epochs
 echo ----------------
 echo [n]: None
 echo -n "Press enter to start it:"
@@ -78,11 +79,11 @@ if [ $MY_Weights -eq 2 ] ; then
     kpt=5
 fi 
 if [ $MY_Weights -eq 3 ] ; then
-    Weights='yolov7-tiny+own+mouth+7cs-34lmk-revise-600epochs/best.pt' 
+    Weights='yolov7-tiny-7cs-34lmk-300W-pre-600epochs/best.pt' 
     kpt=34
 fi 
 if [ $MY_Weights -eq 4 ] ; then
-    Weights='yolov7-tiny-Mouth+own+mirrir-34lmk-revise-2200epochs/best.pt' 
+    Weights='yolov7-tiny-dwkpt-7cs-34lmk-300W-pre-600epochs/best.pt' 
     kpt=34
 fi 
 if [ $MY_Weights -eq 5 ] ; then
@@ -90,7 +91,7 @@ if [ $MY_Weights -eq 5 ] ; then
     kpt=34
 fi 
 if [ $MY_Weights -eq 6 ] ; then
-    Weights='yolov7-lite-s-Mouth+own+mirrir-revise-34lmk-2200epochs/best.pt' 
+    Weights='yolov7-lite-s-dwkpt-7cs-34lmk-300W-pre-600epochs/best.pt' 
     kpt=34
 fi 
 if [ $MY_Weights -eq 7 ] ; then
@@ -98,19 +99,19 @@ if [ $MY_Weights -eq 7 ] ; then
     kpt=34
 fi 
 if [ $MY_Weights -eq 8 ] ; then
-    Weights='yolov7-lite-t-Mouth+own+mirrir-revise-34lmk-2200epochs/best.pt' 
-    kpt=34
-fi 
-if [ $MY_Weights -eq 9 ] ; then
     Weights='yolov7-lite-t-dwkpt-7cs-34lmk-300W-pre-600epochs/best.pt' 
     kpt=34
 fi 
+if [ $MY_Weights -eq 9 ] ; then
+    Weights='yolov7-tiny-Mouth+own+mirrir-34lmk-revise-2200epochs/best.pt' 
+    kpt=34
+fi 
 if [ $MY_Weights -eq 10 ] ; then
-    Weights='yolov7-face+own+mouth+7cs-34lmk-revise-600epochs/best.pt' 
+    Weights='yolov7-lite-s-Mouth+own+mirrir-34lmk-revise-2200epochs/best.pt' 
     kpt=34
 fi 
 if [ $MY_Weights -eq 11 ] ; then
-    Weights='yolov7-lite-t+own+mouth+mirrir+7cs-34lmk-revise-2200epochs/best.pt' 
+    Weights='yolov7-lite-t-Mouth+own+mirrir-revise-34lmk-2200epochs/best.pt' 
     kpt=34
 fi 
 
@@ -230,7 +231,7 @@ if [ $MY_mode -eq 4 ] ; then
     --source cam.txt \
     --kpt-label $kpt \
     --project ../yolov7-face-runs/cam/ \
-    --nosave
+    # --nosave
 
 fi
 
@@ -244,7 +245,7 @@ if [ $MY_mode -eq 5 ] ; then
 
     python3 detect_post.py \
     --weights ../../weights/yolov7-face/$Weights \
-    --source /media/joe/Xavierssd/2023_0816_otocam_datavideo/output30.avi \
+    --source /media/joe/Xavierssd/2023_0816_otocam_datavideo/output12.avi \
     --conf-thres 0.5 \
     --iou-thres 0.5 \
     --kpt-label $kpt \

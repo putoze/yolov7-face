@@ -18,10 +18,9 @@ from utils.plots import plot_one_box, show_fps, plot_kpts
 from utils.torch_utils import select_device, load_classifier, time_synchronized
 
 # self add
-from post_alg import fitEllipse, headpose_alg, alg_6DRepNet, icon_alg, gaze_estimate, gaze_GazeML,alert,gaze_PFLD #gaze_laser
+from post_alg import fitEllipse, headpose_alg, alg_6DRepNet, icon_alg, gaze_estimate, gaze_GazeML,alert,gaze_PFLD 
 from GazeML.gaze import draw_gaze
 from PFLD.models.pfld import Gaze_PFLD
-# from GazeML.gaze_laser import *
 
 ## 6D RepNet 
 from face_detection import RetinaFace
@@ -165,6 +164,11 @@ def detect(opt):
     # drowsy
     max_drowsy_cnt = 10
     yawn_cnt = 0
+    close_eye_time_left = 0
+    close_eye_time_right = 0
+    close_eye_time = 0
+    drowy_time_max = 1.5
+
 
     # Attentive
     yaw_boundary = 30
@@ -389,30 +393,38 @@ def detect(opt):
 
                     # gaze                    
                     if len(pupil_left) != 0:
-                        # gaze_left = gaze_GazeML(im0, coordinate_np[0:6], pupil_left)
+                        # gazeML
+                        gaze_left = gaze_GazeML(im0, coordinate_np[0:6], pupil_left)
                         # draw_gaze(im0,pupil_left[0],gaze_left[0],length=200.0)
                         
-                        left_eye = im0[coordinate[2][1]-30:coordinate[4][1]+30,coordinate[0][0]:coordinate[3][0],:]
-                        gaze_eye_left = gaze_PFLD(left_eye,device,gaze_pfld) 
+                        # gaze_PFLD
+                        # left_eye = im0[coordinate[2][1]-30:coordinate[4][1]+30,coordinate[0][0]:coordinate[3][0],:]
+                        # gaze_eye_left = gaze_PFLD(left_eye,device,gaze_pfld) 
+
+                        # drowsy
+                        close_eye_time_left = 0
+                    elif attentive_flag :
+                        close_eye_time_left += t3 - t1
+
                     if len(pupil_right) != 0:
-                        # gaze_right = gaze_GazeML(im0, coordinate_np[6:12], pupil_right)
+                        # gazeML
+                        gaze_right = gaze_GazeML(im0, coordinate_np[6:12], pupil_right)
                         # draw_gaze(im0,pupil_right[0],gaze_right[0],length=200.0)
-                        right_eye = im0[coordinate[8][1]-30:coordinate[10][1]+30,coordinate[6][0]:coordinate[9][0],:]
-                        gaze_eye_right = gaze_PFLD(right_eye,device,gaze_pfld) 
 
-                    # pupil_laser_left,eye_center_left   = gaze_laser(im0, coordinate[0:6])
-                    # pupil_laser_right,eye_center_right = gaze_laser(im0, coordinate[6:12])
-                    # pupils_laser = np.array([pupil_laser_left, pupil_laser_right])
+                        # gaze_PFLD
+                        # right_eye = im0[coordinate[8][1]-30:coordinate[10][1]+30,coordinate[6][0]:coordinate[9][0],:]
+                        # gaze_eye_right = gaze_PFLD(right_eye,device,gaze_pfld) 
 
-                    # poi = [coordinate[0], coordinate[3]], [coordinate[6], coordinate[9]],  \
-                    #     pupils_laser, [eye_center_left,eye_center_right]
-                    # theta, pha, delta = calculate_3d_gaze(frame, poi)
-                    
-                    # im0,yaw,pitch,roll = gaze_estimate(im0, coordinate, nose_point, pupil_left, pupil_right)
+                        # drowsy
+                        close_eye_time_right = 0
+                    elif attentive_flag :
+                        close_eye_time_right += t3 - t1
+
+                    close_eye_time = (close_eye_time_right + close_eye_time_left) / 2
                     
                     # drowsy Alert 
                     if post_flag[1] == 1:
-                        im0,yawn_flag = alert(im0,coordinate_np,glasses_flag)
+                        im0,yawn_flag = alert(im0,coordinate_np,glasses_flag,close_eye_time)
                         if yawn_flag:
                             yawn_cnt += 1
                         else :
@@ -420,7 +432,7 @@ def detect(opt):
 
 
                     # drowsy
-                    if yawn_cnt > max_drowsy_cnt:
+                    if yawn_cnt > max_drowsy_cnt or close_eye_time > drowy_time_max:
                         icon_flag[0] = 1
                     else :
                         icon_flag[0] = 0
@@ -453,6 +465,7 @@ def detect(opt):
             # inference times
             if frame_face != 0:
                 inference_time_nms += t3 - t1
+            # inference_time_nms += t3 - t1
 
             frame_face += 1
 
@@ -465,17 +478,17 @@ def detect(opt):
         else:
             attentive_flag = 1
 
-        if attentive_flag == 0:
-            not_attentive_cnt += 1
-        else:
-            not_attentive_cnt = 0
+        # if attentive_flag == 0:
+        #     not_attentive_cnt += 1
+        # else:
+        #     not_attentive_cnt = 0
 
-        if not_attentive_cnt > max_not_attentive_cnt :
-            icon_flag[1] = 1
-            yawn_cnt = 0
-            icon_flag[0] = 0
-        else:
-            icon_flag[1] = 0
+        # if not_attentive_cnt > max_not_attentive_cnt :
+        #     icon_flag[1] = 1
+        #     yawn_cnt = 0
+        #     icon_flag[0] = 0
+        # else:
+        #     icon_flag[1] = 0
         
         # icon
         if post_flag[2]:
@@ -494,13 +507,13 @@ def detect(opt):
                             cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2)
             next_txt_height += gap_txt_height
             cv2.putText(im0,"roll:"+roll_str,(0,next_txt_height), 
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2)
-            next_txt_height += gap_txt_height
-            cv2.putText(im0,"yaw:"+yaw_str,(0,next_txt_height), 
                         cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
             next_txt_height += gap_txt_height
-            cv2.putText(im0,"pitch:"+pitch_str,(0,next_txt_height), 
+            cv2.putText(im0,"yaw:"+yaw_str,(0,next_txt_height), 
                         cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+            next_txt_height += gap_txt_height
+            cv2.putText(im0,"pitch:"+pitch_str,(0,next_txt_height), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2)
             next_txt_height += gap_txt_height
 
 
@@ -512,7 +525,7 @@ def detect(opt):
             im0 = show_fps(im0, fps)
             cv2.imshow(window_name, im0)
             key = cv2.waitKey(1)
-            if key == 27 :  # ESC key: quit program  # or frame_cnt == 500
+            if key == 27:  # ESC key: quit program  # or frame_cnt == 500
                 print("")
                 print("-------------------------------")
                 print("------ See You Next Time ------")

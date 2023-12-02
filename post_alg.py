@@ -58,6 +58,13 @@ model_points_v2 = np.array([
 ])
 
 YAWN_THRESH = 25
+close_eye_time_left = 0
+close_eye_cnt_left = 0
+close_eye_time_right = 0
+close_eye_cnt_right = 0
+close_eye_time = 0
+close_eye_starttime_left = 0
+close_eye_starttime_right = 0
 
 def fitEllipse(input_img,flag_list,bb):
     target_img = None
@@ -265,12 +272,20 @@ def headpose_alg(im0,coordinate):
         
     return im0,yaw,pitch,roll
 
-def alert(im0,coordinate_np,glasses_flag,close_eye_time):
+def alert(im0,coordinate_np,glasses_flag,pupil_flag):
     
     leftEye = coordinate_np[0:6]
     rightEye = coordinate_np[6:12]
     distance = lip_distance(coordinate_np[13:33])
     lip = coordinate_np[13:25]
+
+    global close_eye_time_left 
+    global close_eye_cnt_left 
+    global close_eye_time_right 
+    global close_eye_cnt_right 
+    global close_eye_time 
+    global close_eye_starttime_left 
+    global close_eye_starttime_right 
 
     # yawn_flag
     yawn_flag = 0
@@ -285,9 +300,35 @@ def alert(im0,coordinate_np,glasses_flag,close_eye_time):
     cv2.drawContours(im0, [rightEyeHull], -1, (0, 255, 255), 1)
     cv2.drawContours(im0, [lip], -1, (0, 255, 255), 1)
 
+    if close_eye_cnt_left == 0:
+        close_eye_starttime_left = time.time()
+    if close_eye_cnt_right == 0:
+        close_eye_starttime_right = time.time()
+
+    close_eye_time_left = time.time() - close_eye_starttime_left
+    close_eye_time_right = time.time() - close_eye_starttime_right
+    close_eye_time = (close_eye_time_left + close_eye_time_right) /2
+
+    if pupil_flag[0] == 0:
+        if glasses_flag:
+            close_eye_cnt_left += 1
+        elif ear < 0.25:
+            close_eye_cnt_left += 1
+    else:
+        close_eye_cnt_left = 0
+
+    if pupil_flag[1] == 0:
+        if glasses_flag:
+            close_eye_cnt_right += 1
+        elif ear < 0.25:
+            close_eye_cnt_right += 1
+    else:
+        close_eye_cnt_right = 0
+
     if glasses_flag:
         cv2.putText(im0, "glasses wear", (300, 30),
             cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+        
 
     cv2.putText(im0, "blink duration: {:.2f} s".format(close_eye_time), (300, 60),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
@@ -299,7 +340,7 @@ def alert(im0,coordinate_np,glasses_flag,close_eye_time):
             cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
         yawn_flag = 1
     
-    return im0, yawn_flag
+    return im0, yawn_flag, close_eye_time
 
 def alg_6DRepNet(im0,driver_face_roi,model_6DRepNet,device,nose_point):
 

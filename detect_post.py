@@ -157,6 +157,11 @@ def detect(opt):
     smoke_cnt = 0
     max_smoke_cnt = 20
 
+    # glasses
+    glasses_cnt = 0
+    max_glasses_cnt = 10
+    glasses_flag = 0
+
     # Text show
     gap_txt_height = 35
     show_text = 1
@@ -164,11 +169,7 @@ def detect(opt):
     # drowsy
     max_drowsy_cnt = 10
     yawn_cnt = 0
-    close_eye_time_left = 0
-    close_eye_time_right = 0
-    close_eye_time = 0
     drowy_time_max = 1.5
-
 
     # Attentive
     yaw_boundary = 30
@@ -184,7 +185,6 @@ def detect(opt):
     # landmark coordinate 
     coordinate = [(0,0) for kid in range(kpt_label)]
 
-    t0 = time.time()
     for path, img, im0s, vid_cap in dataset:
         img = torch.from_numpy(img).to(device)
         img = img.half() if half else img.float()  # uint8 to fp16/32
@@ -206,8 +206,12 @@ def detect(opt):
         pupil = []
         pupil_left = []
         pupil_right = []
-        glasses_flag = 0
         post_flag = [0,0,0] # headpose, alert, icon
+        # pupil flag
+        pupil_flag =[0,0] # 0: left, 1: right
+
+        if frame_cnt == 1:
+            t0 = time.time()
 
         if icon_flag[1] == 1:
             mode1_t0 = time.time()
@@ -310,11 +314,12 @@ def detect(opt):
                         phone_cnt += 1
                     elif names[int(cls)] == 'smoke' :
                         smoke_cnt += 1
+                    elif names[int(cls)] == 'glasses' :
+                        glasses_cnt += 1
                     elif names[int(cls)] == 'pupil' :
                         bb = [int(x) for x in xyxy]
                         pupil.append(bb)
-                    elif names[int(cls)] == 'glasses' :
-                        glasses_flag = 1
+
 
                 # ====== Object Alert ======
                 if frame_cnt % max_seatbelt_cnt == 0:
@@ -322,20 +327,28 @@ def detect(opt):
                         icon_flag[2] = 1
                     else:
                         icon_flag[2] = 0
+                    seatbelt_cnt = 0
 
+                if frame_cnt % max_phone_cnt == 0:
                     if phone_cnt >= max_phone_cnt * 0.5:
                         icon_flag[3] = 1
                     else:
                         icon_flag[3] = 0
+                    phone_cnt = 0
 
+                if frame_cnt % max_smoke_cnt == 0:
                     if smoke_cnt >= max_smoke_cnt * 0.5:
                         icon_flag[4] = 1
                     else:
                         icon_flag[4] = 0
-                    
-                    seatbelt_cnt = 0
-                    phone_cnt = 0
                     smoke_cnt = 0
+
+                if frame_cnt % max_glasses_cnt == 0:
+                    if glasses_cnt >= max_glasses_cnt * 0.5:
+                        glasses_flag = 1
+                    else:
+                        glasses_flag = 0
+                    glasses_cnt = 0
 
                 if len(driver_face_roi) != 0 and len(driver_kpts) != 0:
                     post_flag = [1,1,1] # headpose, alert, icon
@@ -401,10 +414,8 @@ def detect(opt):
                         # left_eye = im0[coordinate[2][1]-30:coordinate[4][1]+30,coordinate[0][0]:coordinate[3][0],:]
                         # gaze_eye_left = gaze_PFLD(left_eye,device,gaze_pfld) 
 
-                        # drowsy
-                        close_eye_time_left = 0
-                    elif attentive_flag :
-                        close_eye_time_left += t3 - t1
+                        pupil_flag[0] = 1
+
 
                     if len(pupil_right) != 0:
                         # gazeML
@@ -415,21 +426,16 @@ def detect(opt):
                         # right_eye = im0[coordinate[8][1]-30:coordinate[10][1]+30,coordinate[6][0]:coordinate[9][0],:]
                         # gaze_eye_right = gaze_PFLD(right_eye,device,gaze_pfld) 
 
-                        # drowsy
-                        close_eye_time_right = 0
-                    elif attentive_flag :
-                        close_eye_time_right += t3 - t1
+                        pupil_flag[1] = 1
 
-                    close_eye_time = (close_eye_time_right + close_eye_time_left) / 2
                     
                     # drowsy Alert 
                     if post_flag[1] == 1:
-                        im0,yawn_flag = alert(im0,coordinate_np,glasses_flag,close_eye_time)
+                        im0,yawn_flag,close_eye_time = alert(im0,coordinate_np,glasses_flag,pupil_flag)
                         if yawn_flag:
                             yawn_cnt += 1
                         else :
                             yawn_cnt = 0
-
 
                     # drowsy
                     if yawn_cnt > max_drowsy_cnt or close_eye_time > drowy_time_max:
@@ -448,7 +454,7 @@ def detect(opt):
                     if save_img or opt.save_crop or view_img:  # Add bbox to image
                         c = int(cls)  # integer class
                         label = None if opt.hide_labels else (names[c] if opt.hide_conf else f'{names[c]} {conf:.2f}')
-                        if names[c] != 'pupil' :
+                        if names[c] != 'pupil' and names[c] != 'glasses' :
                             plot_one_box(xyxy, im0, label=label, color=colors[c], line_thickness=opt.line_thickness)
                         if opt.save_crop:
                             save_one_box(xyxy, im0s, file=save_dir / 'crops' / names[c] / f'{p.stem}.jpg', BGR=True)
@@ -525,7 +531,7 @@ def detect(opt):
             im0 = show_fps(im0, fps)
             cv2.imshow(window_name, im0)
             key = cv2.waitKey(1)
-            if key == 27:  # ESC key: quit program  # or frame_cnt == 500
+            if key == 27 or frame_cnt == 501:  # ESC key: quit program  # or frame_cnt == 501
                 print("")
                 print("-------------------------------")
                 print("------ See You Next Time ------")
@@ -534,6 +540,7 @@ def detect(opt):
                 cv2.destroyAllWindows()
 
                 total_cal = time.time() - t0
+                frame_cnt -= 1
                 print('frame_cnt', frame_cnt)
                 print(f'Done. ({total_cal:.3f}s)')
                 print(f'Average FPS : ({frame_cnt/total_cal:.3f}frame/seconds)')
